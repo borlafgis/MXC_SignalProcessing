@@ -5,6 +5,10 @@ jupyter: python3
 
 ## Imports and signal generation
 
+We will create a signal with a sampling rate of 1000Hz (1000 samples/s), and a
+length of three seconds. It will be created by linear interolation between some 
+random time points ($p = 15$).
+
 ```{python}
 import numba as nb
 import numpy as np
@@ -24,23 +28,29 @@ time = np.arange(0, 3, freq) # three seconds total time
 n = len(time)  # Sample count
 p = 15 # poles for random interpolation
 
-# noise level (amplitude), measured in standard deviations
-noise_amp = 5
-
 # amplitude modulator and noise level
-synth_amp = np.interp(
+signal_amp = 30
+pure_signal = np.interp(
     x=np.linspace(0, p, n),  # interpolated x coordinate
     xp=np.arange(0, p),  # original x coordinates
-    fp=np.random.rand(p) * 30 # y coordinates
+    fp=np.random.rand(p) * signal_amp  # y coordinates
     )
+
+# noise level (amplitude), measured in standard deviations
+noise_amp = 5
 noise  = noise_amp * np.random.randn(n)
-signal = synth_amp + noise
+
+# Add noise to the signal
+noisy_signal = pure_signal + noise
+
+plt.plot(noisy_signal)
+plt.plot(pure_signal)
 ```
 
 ## VIDEO: Mean-smooth a time series
 
 _Mean filter works by setting each data point in the filtered signal to be an
-average of these surrounding points from the original signal._
+average of the surrounding points from the original signal._
 
 \begin{equation}
     y_t = \frac{1}{ 2k + 1 } \sum^{t+k}_{i=t-k} x_i
@@ -50,9 +60,9 @@ _Now the number of data points that you go backwards in time and forwards in
 time ($k$) is the key parameter of the mean smoothing filter, and that's
 called the order of the filter._
 
-_So each time point T in the filtered signal y is defined as the sum of all
-the data points in the original signal X going T backwards in time, k points
-and T forwards in time k points._
+_So each time point $t$ in the filtered signal $y$ is defined as the sum of all
+the data points in the original signal $x$ going $t$ backwards in time, $k$ points
+and $t$ forwards in time $k$ points._
 
 _So here you sum all of these up and then you need to divide by the number of
 time points, which is two K plus one._
@@ -81,7 +91,7 @@ def mean_filter(signal, radius):
     return filtered
 
 radius = 20
-mean_filt = mean_filter(signal, radius=20)
+mean_filt = mean_filter(noisy_signal, radius=20)
 ```
 
 _Now I've specified $k$ here in terms of the number of points, however, time
@@ -107,10 +117,10 @@ window_diameter = 1000*(2 * radius+1) / srate
 
 #| label: fig-run-mean
 #| fig-cap: "plot the noisy and filtered signals"
-plt.plot(time, signal, lw=.1, label='Original')
+plt.plot(time, noisy_signal, lw=.1, label='Original')
 plt.plot(time, mean_filt, color='k', label='filtered')
 
-n = len(signal)
+n = len(noisy_signal)
 plt.legend()
 plt.xlabel('Time (sec.)')
 plt.ylabel('Amplitude')
@@ -120,7 +130,30 @@ plt.show()
 
 ```
 
-## Note: Edge effects
+So there's a couple of interesting things that you can look at here.
+First, it's interesting to see the signal still retains some roughness.
+If we wanted the signalto be smoother we could increase $k$. At $k = 40$,
+looks smoother, but the edges are still present.
+
+Another thing you notice is some funny things happening at the start/end of the
+signal called edge effects. If the filter is initialized to zero this will
+create awkward jumps at the beginning and at the end.
+
+Another possibility is to initialize the edges to be the original signal.
+That doesn't give you this sudden drop down to zero, but it returns a kind of
+bizarre looking, filtered signal where there's a lot of really high frequency
+activity in the beginning and at the end.
+
+### Closing remarks
+
+So this is the running mean filter. 
+It's a very useful filter, particularly when the noise is normally distributed.
+This is not an appropriate filter for all kinds of noise.
+
+This is really specific for when noise is distributed, positive and negative
+relative to the signal of interest.
+
+### Note: Edge effects
 
 _In general, you always get something bizarre happening at the edges of your
 time series Whenever you apply any kind of temporal filter. You will see
@@ -135,53 +168,347 @@ dealing with edge effects. So usually you have to figure out what's the best
 way to deal with edge effects on a case by case basis given your specific application._
 
 
-# VIDEO: Gaussian-smooth a time series
+## VIDEO: Gaussian-smooth a time series
+
+Gaussian smoothing is very similar to Mean-smoothing, but it uses a Gaussian
+weight instead of a constant weight of $1/n$. The formula looks like this:
+
+\begin{equation}
+    y_t = \sum^{t+k}_{i=t-k} x_i g_i
+\end{equation}
+
+The formula is nearly the same as in the case of the gaussian smoothing filter.
+The mean smoothing filter had another term outside the summation here, and that
+term was dividing by the total number of points in the kernel, which was
+$2k + 1$. The gaussian filter uses a weighting function $g_i$, a function that
+encloses an area of one (total probability density is one).
+
+The result of a gaussian filter tends to be smoother than those of its
+mean-based counterpart, albeit the edges are even more roughen up.
+
+### The gaussian window/kernel
+
+A Gaussian  starts at zero and it ends at zero and it goes up to one. The
+formula is:
+
+\begin{equation}
+    g = \exp \left( \frac{-4 \ln (2) t^2}{w^2} \right)
+\end{equation}
+
+The important thing about this formula to recognize is $e$ ($\exp$) to the
+$-t^2$ over something. The $t$ refers to time and it's good to have time be
+centered at zero because the maximum weight is reached (one?) at that point,
+$t=0$
+
+Note this is a more intuitive formulation of the Gaussian that allows you to
+specify $w$ parameter, which controls the width of the distribution in terms
+of a quantity called full width at half maximum (FWHM).
+
+FWHM is the distance horizontal between the two closest points to the
+vertical-mid point of the distribution (50% gain). It is an intuitive parameter
+because you can think about it in terms of how much smoothing you want to apply.
+
+So if you want to apply, let's say ten milliseconds of smoothing, you set
+$w = 10$.
+
+#### Python implementation.
+
+For our initial example the full width at half maximum is 25 ($FWHM = 25$).
+The time vector used to create the Gaussian, goes from $-k$ to $+k$ (plus one 
+to account for Python's zero-based indexing). $k$ is set to $100$.
+
+```{python}
+
+
+## create Gaussian kernel
+# kernel radius
+k = 100
+
+# full-width half-maximum: the key Gaussian parameter
+actual_fwhm = 25 # in ms
+
+# normalized time vector in ms
+
+def make_gauss(srate, radius, fwhm):
+    k = radius
+    positions = np.arange(-k, k + 1)
+    time = 1000 * positions/srate
+    gain = np.exp( -(4 * np.log(2) * time**2) / fwhm**2 )
+    return time, gain
+
+
+# create Gaussian window
+gauss_time, gauss_win = make_gauss(srate, radius=k, fwhm=actual_fwhm)
+```
+
+Note the empirical FWHM becomes slightly different when it goes through the
+gaussian formula due some factors, with the sampling rate playing the biggest
+role.
+
+So it's possible that you can specify something that feels very precise here, but it's not actually going to be implemented as this exact number just because we are sampling.
+
+We don't have an infinite number of time points here.
+
+```{python}
+# compute empirical FWHM
+after_half = k + np.argmin( (gauss_win[k:]-.5)**2 )
+before_half = np.argmin( (gauss_win-.5)**2 )
+emp_fwhm = gauss_time[after_half] - gauss_time[before_half]
+print(f"{emp_fwhm:.02f}")
+```
+
+In fact, I'll even leave this number like this.
+
+And now then I do some plotting here.
+
+So here's what the Gaussian looks like for these parameters that I've set up.
+
+You can see I specified this ludicrously precise, full width at half maximum, and the full width at
+
+half maximum that was empirically obtained was 26 milliseconds.
+
+So it's quite close, but not exact.
+
 
 ```{python}
 ## create Gaussian kernel
 # full-width half-maximum: the key Gaussian parameter
-fwhm = 60 # in ms
+actual_fwhm = 60 # in ms
 
 # normalized time vector in ms
 k = 100
-gtime = 1000 * np.arange(-k,k+1)/srate
+gtime = 1000 * np.arange(-k, k+1)/srate
 
 # create Gaussian window
-gauswin = np.exp( -(4*np.log(2)*gtime**2) / fwhm**2 )
+gauss_win = np.exp( -(4 * np.log(2) * gtime**2) / actual_fwhm**2 )
 
 # compute empirical FWHM
-pstPeakHalf = k + np.argmin( (gauswin[k:]-.5)**2 )
-prePeakHalf = np.argmin( (gauswin-.5)**2 )
+after_half = k + np.argmin( (gauss_win[k:]-.5)**2 )
+before_half = np.argmin( (gauss_win-.5)**2 )
 
-empFWHM = gtime[pstPeakHalf] - gtime[prePeakHalf]
+emp_fwhm = gtime[after_half] - gtime[before_half]
 
 # show the Gaussian
-plt.plot(gtime,gauswin,'ko-')
-plt.plot([gtime[prePeakHalf],gtime[pstPeakHalf]],[gauswin[prePeakHalf],gauswin[pstPeakHalf]],'m')
+plt.plot(gtime, gauss_win,'k-')
+plt.plot(
+    [gtime[before_half],gtime[after_half]],  # The x
+    [gauss_win[before_half],gauss_win[after_half]],  # The y
+    'mo-'  # The color and linestyle
+    )
 
 # then normalize Gaussian to unit energy
-gauswin = gauswin / np.sum(gauswin)
-# title([ 'Gaussian kernel with requeted FWHM ' num2str(fwhm) ' ms (' num2str(empFWHM) ' ms achieved)' ])
+gauss_win = gauss_win / np.sum(gauss_win)
+# title([ 'Gaussian kernel with requeted FWHM ' num2str(actual_fwhm) ' ms (' num2str(emp_fwhm) ' ms achieved)' ])
 plt.xlabel('Time (ms)')
 plt.ylabel('Gain')
 
 plt.show()
 ```
 
+Now I want to talk a little bit about this K parameter.
+
+It kind of doesn't really matter how much you set this K to.
+
+There's two considerations.
+
+One is that K should be sufficiently long that the Gaussian goes down to zero on both sides.
+
+Technically speaking, the Gaussian never really gets to exact zero, but it gets very, very, very
+
+close.
+
+So these numbers are really, really tiny down here.
+
+So imagine, for example, if I had set K to be ten, then this is much too small, this is too narrow
+
+for the Gaussian or I should say too little time.
+
+You can see that the gain function never even gets below around two thirds, 0.66 and the full width
+
+at half maximum is also not accurate because the way that this full width at half maximum code is working
+
+is looking for the values that are closest to 0.5, closest to 50% gain, which is what it's supposed
+
+to be doing.
+
+But I set this k parameter to be too small so it never even gets down to 0.5.
+
+So this is not good.
+
+Let's try 50.
+
+50 seems good.
+
+We really get to 50% gain, and this drops down to zero.
+
+Maybe it could even be 40.
+
+It's always good to check these filters that you are applying to your data set.
+
+I will talk much more about how to visualize and qualitatively and quantitatively interpret filter kernels
+
+in the section of this course on filtering.
+
+But for now, suffice it to say that it's always good just to look at anything you are going to be applying
+
+to your time series data to make sure that it looks reasonable.
+
+Okay, so I said there were two considerations for the bounds of K, the lower consideration.
+
+The lower bound is about making sure that the Gaussian goes down to zero.
+
+The upper bound is about making sure that this isn't too long, it doesn't go too far out from zero.
+
+And the reason for that is because of edge effects.
+
+And I will explain a little bit more when I show you the results of the filtering later on.
+
+Okay.
+
+There's one final thing I want to say about this Gaussian, which is that after I do this plotting,
+
+after I plot this function, you can see here, it goes up to one.
+
+Then I change the Gaussian window to be normalized to unit energy.
+
+So I divide the Gaussian window by the sum of all the points in the Gaussian.
+
+That's important for getting the filtered signal to be in the same units at the same scale as the original
+
+signal.
+
+Again, I will come back to this in a few minutes.
+
+Okay.
+
+Now I want to show you quickly implementing this filter.
+
+This is not super interesting because the code is basically exactly the same as you saw in the previous
+
+video on mean smoothing.
+
+So we loop over time points and you set each time point in the filtered signal to be the signal from
+
+i minus K to I plus K times the Gaussian window.
+
+And then we sum over all of those points and then I'm going to plot the original signal and the Gaussian.
+
+That looks something like this.
+
+And now I quickly want to go back and show you the mean smoothing filter for comparison.
+
+So this is exactly the mean smoothing filter that I showed in the previous video.
+
+So at this scale, they look overall the same.
+
+And when I zoom in, you will see some differences.
+
+So the Gaussian filter is quite a bit smoother.
+
+It gives us a smoother time series compared to the running mean filter.
+
+Now, I'm not going to say that one is better than the other.
+
+It's very application specific.
+
+There could be times when having a Gaussian filter is better and there could be times when having a
+
+running mean filter is better.
+
+It's important just to be aware of the different options.
+
+All right.
+
+So that's what it looks like.
+
+I think overall, both these filters are quite nice.
+
+They're quite useful when the noise is normally distributed around the signal.
+
+So when the noise has positive values and negative values.
+
+Okay.
+
+So you notice these edge effects here with the Gaussian filter, and that's really because we had to
+
+start at Element K plus one.
+
+So if I set K to be higher, let's say K is 400.
+
+Now, in this case, you know, the Gaussian is kind of the same here.
+
+So maybe you think, well, it doesn't really matter.
+
+These are all zeros, but it does matter because when we get to implementing the filter now the edge
+
+effects are much, much bigger.
+
+I would say this is unacceptably large, particularly considering that we don't need to have the filter
+
+go all the way out here.
+
+This is useless.
+
+These are pretty much all zeros.
+
+So that's why it's good to have K be as small as it possibly can be given that this kernel is still
+
+tapering down to zero.
+
+Okay.
+
+There's one more thing I want to show you in this video, which is why it's important to normalize the
+
+Gaussian to unit energy.
+
+And that's really all about not dividing by anything here outside this summation function.
+
+So what I'm going to do is comment out this line, rerun this cell.
+
+Now, this plot doesn't change at all because the plotting happened before the normalization.
+
+And now watch what happens when I run the filter.
+
+So the filtered signal is now this black line.
+
+It's kind of the same as this.
+
+It's just that it's scaled all the way up.
+
+So now I'll go back.
+
+This looks really ugly to me.
+
+I want to I want to end this video with a nice picture.
+
+All right.
+
+That's a good way to end this video.
+
+So I hope you feel like you learned something about the Gaussian smoothing filter and how it differs
+
+from the mean smoothing filter.
+
+I encourage you, as always, to spend some time playing around with this code, trying different values
+
+of the full width at half maximum to see how that affects the smoothness of the result.
+
+And I will see you in the next video.
+
 
 ```{python}
 ## implement the filter
 
 # initialize filtered signal vector
-filtsigG = copy.deepcopy(signal)
+filtsigG = copy.deepcopy(noisy_signal)
 
 # # implement the running mean filter
 for i in range(k+1,n-k):
     # each point is the weighted average of k surrounding points
-    filtsigG[i] = np.sum( signal[i-k:i+k+1]*gauswin )
+    filtsigG[i] = np.sum( noisy_signal[i-k:i+k+1]*gauss_win )
 
 # plot
-plt.plot(time,signal,'r',label='Original')
+plt.plot(time,noisy_signal,'r',label='Original')
 plt.plot(time,filtsigG,'k',label='Gaussian-filtered')
 
 plt.xlabel('Time (s)')
@@ -192,14 +519,14 @@ plt.title('Gaussian smoothing filter')
 ## for comparison, plot mean smoothing filter
 
 # initialize filtered signal vector
-filtsigMean = copy.deepcopy(signal)
+filtsigMean = copy.deepcopy(noisy_signal)
 
 # implement the running mean filter
 # note: using mk instead of k to avoid confusion with k above
 mk = 20 # filter window is actually mk*2+1
 for i in range(mk+1,n-mk-1):
     # each point is the average of k surrounding points
-    filtsigMean[i] = np.mean(signal[i-mk:i+mk+1])
+    filtsigMean[i] = np.mean(noisy_signal[i-mk:i+mk+1])
 
 plt.plot(time,filtsigMean,'b',label='Running mean')
 plt.legend()
@@ -275,7 +602,7 @@ plt.show()
 
 ```python
 # import data
-emgdata = sio.loadmat('emg4TKEO.mat')
+emgdata = sio.loadmat('TimeSeriesDenoising/emg4TKEO.mat')
 
 # extract needed variables
 emgtime = emgdata['emgtime'][0]
@@ -360,7 +687,7 @@ threshold = 40
 suprathresh = np.where( signal>threshold )[0]
 
 # initialize filtered signal
-filtsig = copy.deepcopy(signal)
+filtsig = copy.deepcopy(noisy_signal)
 
 # loop through suprathreshold points and set to median of k
 k = 20 # actual window is k*2+1
@@ -389,13 +716,13 @@ plt.show()
 ```python
 # create signal with linear trend imposed
 n = 2000
-signal = np.cumsum(np.random.randn(n)) + np.linspace(-30,30,n)
+trended_signal = np.cumsum(np.random.randn(n)) + np.linspace(-30,30,n)
 
 # linear detrending
-detsignal = scipy.signal.detrend(signal)
+detsignal = scipy.signal.detrend(trended_signal)
 
 # get means
-omean = np.mean(signal) # original mean
+omean = np.mean(trended_signal) # original mean
 dmean = np.mean(detsignal) # detrended mean
 
 # plot signal and detrended signal

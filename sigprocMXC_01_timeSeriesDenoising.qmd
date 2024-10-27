@@ -1,5 +1,5 @@
 ---
-title: Quarto Computations
+title: Time series denoising
 jupyter: python3
 ---
 
@@ -112,6 +112,8 @@ the same thing as the window size in milliseconds. But that's generally not the
 case for sampling rates other than 1000._
 
 ```{python}
+#| label: mean-smoothing
+#| fig-cap: "Mean filter"
 # compute window size in milliseconds (ms)
 window_diameter = 1000*(2 * radius+1) / srate
 
@@ -124,10 +126,7 @@ n = len(noisy_signal)
 plt.legend()
 plt.xlabel('Time (sec.)')
 plt.ylabel('Amplitude')
-plt.title(f'Running-mean filter with a k={window_diameter:.0f} millisecond window')
-
-plt.show()
-
+plt.title(f'Running-mean filter with a k={window_diameter:.0f} millisecond window');
 ```
 
 So there's a couple of interesting things that you can look at here.
@@ -213,227 +212,141 @@ $w = 10$.
 
 #### Python implementation.
 
-For our initial example the full width at half maximum is 25 ($FWHM = 25$).
-The time vector used to create the Gaussian, goes from $-k$ to $+k$ (plus one 
-to account for Python's zero-based indexing). $k$ is set to $100$.
+A python implementation of the gaussian kernel would look like this:
 
 ```{python}
+@nb.jit
+def make_gaussian(srate, radius, fwhm):
+    k = radius
+    positions = np.arange(-k, k + 1)
+    time = 1000 * positions/srate
+    gain = np.exp( -(4 * np.log(2) * time**2) / fwhm**2 )
+    return time, gain
+```
 
+Gaussian kernels are defined by their FWHM, and $k$, which represents the
+temporal span of the kernel (from $-k$ to $+k$). @fig-gauss-kernel shows three 
+kernels with $FWHM = 25$, and three diffrent but window sizes. The first thing
+we notice is that the empirical $FWHM$ depicted on the legend is not exactly
+the same. This is due several factors, with sampling rate playing the biggest
+role (We have a sample, not an infinite number of time points).
+
+When $k = 10$, the kernel is a narrow window with a short time span. In fact,
+it is too short, as the gain do not reach the bottom. The empirical FWHM
+is shifted upwards, becoming the lowest point of the kernel, instead of the
+vertical mid-point. $k = 25$ is a more reasonable value, and $k = 50$ is even 
+better, reaching down to near-zero vales.
+It's always good to check these filters that you are applying to your data set.
+
+```{python}
+#| label: fig-gauss-kernel
+#| fig-cap: "Relationship between $k$ and FWHM"
 
 ## create Gaussian kernel
 # kernel radius
 k = 100
 
 # full-width half-maximum: the key Gaussian parameter
-actual_fwhm = 25 # in ms
+fwhm = 25 # in ms
 
-# normalized time vector in ms
+def plot_gaussian_kernel(fwhm, kstyles):
+    arrow_kwargs = {'arrowprops': {'arrowstyle': '<->'}}
+    style = {'facecolor': 'w', 'edgecolor': 'k', 'boxstyle': 'round,pad=.2'}
 
-def make_gauss(srate, radius, fwhm):
-    k = radius
-    positions = np.arange(-k, k + 1)
-    time = 1000 * positions/srate
-    gain = np.exp( -(4 * np.log(2) * time**2) / fwhm**2 )
-    return time, gain
+    for k, color in kstyles.items():
 
+        # Gaussian kernel
+        times, gains = make_gaussian(srate, radius=k, fwhm=fwhm)
+        plt.plot(times, gains, color='k')
 
-# create Gaussian window
-gauss_time, gauss_win = make_gauss(srate, radius=k, fwhm=actual_fwhm)
+        plt.axhline(.5, color='k', ls=':', lw=1, zorder=0)
+
+        # FWHM
+        fwhm_0 = np.argmin( (gains[:k]-.5)**2 )
+        fwhm_1 = np.argmin( (gains[k:]-.5)**2 ) + k # re-set indexing
+        emp_fwhm = times[fwhm_1] - times[fwhm_0]
+        plt.plot(
+            [times[fwhm_0],times[fwhm_1]], [gains[fwhm_0],gains[fwhm_1]],
+            'o-',
+            label=f"k = {k}; Emp. FWHM = {emp_fwhm:.0f}",
+            )
+        
+        # show window length
+        start, end, gain0 = times[0], times[-1], gains[0]
+        plt.fill_between(x=times, y1=gain0, y2=gains, color=color)
+        plt.annotate('', xy=(start, gain0), xytext=(end ,gain0), **arrow_kwargs)
+        plt.text(0, gain0, f"k={k}", ha='center', va='center', bbox=style)
+
+    # then normalize Gaussian to unit energy
+    gauss_win = gains / np.sum(gains)
+    plt.title(f"Gaussian kernel with target FWHM = {fwhm:.02f} ms")
+    plt.xlabel('Time (ms)')
+    plt.ylabel('Gain')
+    plt.legend()
+
+plot_gaussian_kernel(fwhm=fwhm, kstyles={50: 'gray', 25: 'lightgray', 12: 'w'})
 ```
 
-Note the empirical FWHM becomes slightly different when it goes through the
-gaussian formula due some factors, with the sampling rate playing the biggest
-role.
+$k$ should be long enough so the edges of the kernel it defines, and the
+edges of the Gaussian defined by FWHM overlap ($3\sigma$), but not longer.
+There are two reasons for that: to avoid having too many points with very
+little weight (gain?), and to avoid edge effects (see next section).
 
-So it's possible that you can specify something that feels very precise here, but it's not actually going to be implemented as this exact number just because we are sampling.
+The last thing to note about the gaussian is it must be normalized to unit
+energy $\left( \sum g = 1 \right)$. Otherwise, the scale of the filtered signal
+would be different from the original. Thus, we divide every gain by the sum of
+all of them.
 
-We don't have an infinite number of time points here.
+## The actual filtering
 
 ```{python}
-# compute empirical FWHM
-after_half = k + np.argmin( (gauss_win[k:]-.5)**2 )
-before_half = np.argmin( (gauss_win-.5)**2 )
-emp_fwhm = gauss_time[after_half] - gauss_time[before_half]
-print(f"{emp_fwhm:.02f}")
+
+@nb.jit
+def gaussian_filter(signal, kernel):
+
+    # initialize filtered signal vector
+    filtered = signal.copy()
+
+    # Calculate the kernel radius and the normalizer
+    k = int((len(kernel) - 1)/2)
+    normalizer = np.sum(kernel)
+    
+    # Apply the filter
+    for i in range(k+1, n-k):
+        # each point is the weighted average of k surrounding points
+        filtered[i] = np.sum(signal[i-k:i+k+1] * kernel)/normalizer
+    
+    return filtered
+
+_, kernel = make_gaussian(srate, radius=50, fwhm=25)
+gauss_filt = gaussian_filter(noisy_signal, kernel)
+
+# plot
+plt.plot(time, noisy_signal,'gray', lw=.1, label='Original')
+plt.plot(time, mean_filt, 'b', label='Mean-filtered')
+plt.plot(time, gauss_filt,'r', label='Gaussian-filtered')
+
+plt.xlabel('Time (s)')
+# plt.xlim(1.7, 1.8)
+plt.ylabel('amp. (a.u.)')
+plt.legend()
+plt.title('Gaussian smoothing filter');
 ```
 
-In fact, I'll even leave this number like this.
+The Gaussian filter  gives us a smoother time series compared to the running
+mean filter. Which one is more useful is application-dependant. These two
+filters are particularly useful when the noise is normally distributed around
+the signal.
 
-And now then I do some plotting here.
+### Edge effects
 
-So here's what the Gaussian looks like for these parameters that I've set up.
-
-You can see I specified this ludicrously precise, full width at half maximum, and the full width at
-
-half maximum that was empirically obtained was 26 milliseconds.
-
-So it's quite close, but not exact.
-
-
-```{python}
-## create Gaussian kernel
-# full-width half-maximum: the key Gaussian parameter
-actual_fwhm = 60 # in ms
-
-# normalized time vector in ms
-k = 100
-gtime = 1000 * np.arange(-k, k+1)/srate
-
-# create Gaussian window
-gauss_win = np.exp( -(4 * np.log(2) * gtime**2) / actual_fwhm**2 )
-
-# compute empirical FWHM
-after_half = k + np.argmin( (gauss_win[k:]-.5)**2 )
-before_half = np.argmin( (gauss_win-.5)**2 )
-
-emp_fwhm = gtime[after_half] - gtime[before_half]
-
-# show the Gaussian
-plt.plot(gtime, gauss_win,'k-')
-plt.plot(
-    [gtime[before_half],gtime[after_half]],  # The x
-    [gauss_win[before_half],gauss_win[after_half]],  # The y
-    'mo-'  # The color and linestyle
-    )
-
-# then normalize Gaussian to unit energy
-gauss_win = gauss_win / np.sum(gauss_win)
-# title([ 'Gaussian kernel with requeted FWHM ' num2str(actual_fwhm) ' ms (' num2str(emp_fwhm) ' ms achieved)' ])
-plt.xlabel('Time (ms)')
-plt.ylabel('Gain')
-
-plt.show()
-```
-
-Now I want to talk a little bit about this K parameter.
-
-It kind of doesn't really matter how much you set this K to.
-
-There's two considerations.
-
-One is that K should be sufficiently long that the Gaussian goes down to zero on both sides.
-
-Technically speaking, the Gaussian never really gets to exact zero, but it gets very, very, very
-
-close.
-
-So these numbers are really, really tiny down here.
-
-So imagine, for example, if I had set K to be ten, then this is much too small, this is too narrow
-
-for the Gaussian or I should say too little time.
-
-You can see that the gain function never even gets below around two thirds, 0.66 and the full width
-
-at half maximum is also not accurate because the way that this full width at half maximum code is working
-
-is looking for the values that are closest to 0.5, closest to 50% gain, which is what it's supposed
-
-to be doing.
-
-But I set this k parameter to be too small so it never even gets down to 0.5.
-
-So this is not good.
-
-Let's try 50.
-
-50 seems good.
-
-We really get to 50% gain, and this drops down to zero.
-
-Maybe it could even be 40.
-
-It's always good to check these filters that you are applying to your data set.
-
-I will talk much more about how to visualize and qualitatively and quantitatively interpret filter kernels
-
-in the section of this course on filtering.
-
-But for now, suffice it to say that it's always good just to look at anything you are going to be applying
-
-to your time series data to make sure that it looks reasonable.
-
-Okay, so I said there were two considerations for the bounds of K, the lower consideration.
-
-The lower bound is about making sure that the Gaussian goes down to zero.
-
-The upper bound is about making sure that this isn't too long, it doesn't go too far out from zero.
-
-And the reason for that is because of edge effects.
-
-And I will explain a little bit more when I show you the results of the filtering later on.
-
-Okay.
-
-There's one final thing I want to say about this Gaussian, which is that after I do this plotting,
-
-after I plot this function, you can see here, it goes up to one.
-
-Then I change the Gaussian window to be normalized to unit energy.
-
-So I divide the Gaussian window by the sum of all the points in the Gaussian.
-
-That's important for getting the filtered signal to be in the same units at the same scale as the original
-
-signal.
-
-Again, I will come back to this in a few minutes.
-
-Okay.
-
-Now I want to show you quickly implementing this filter.
-
-This is not super interesting because the code is basically exactly the same as you saw in the previous
-
-video on mean smoothing.
-
-So we loop over time points and you set each time point in the filtered signal to be the signal from
-
-i minus K to I plus K times the Gaussian window.
-
-And then we sum over all of those points and then I'm going to plot the original signal and the Gaussian.
-
-That looks something like this.
-
-And now I quickly want to go back and show you the mean smoothing filter for comparison.
-
-So this is exactly the mean smoothing filter that I showed in the previous video.
-
-So at this scale, they look overall the same.
-
-And when I zoom in, you will see some differences.
-
-So the Gaussian filter is quite a bit smoother.
-
-It gives us a smoother time series compared to the running mean filter.
-
-Now, I'm not going to say that one is better than the other.
-
-It's very application specific.
-
-There could be times when having a Gaussian filter is better and there could be times when having a
-
-running mean filter is better.
-
-It's important just to be aware of the different options.
-
-All right.
-
-So that's what it looks like.
-
-I think overall, both these filters are quite nice.
-
-They're quite useful when the noise is normally distributed around the signal.
-
-So when the noise has positive values and negative values.
-
-Okay.
-
-So you notice these edge effects here with the Gaussian filter, and that's really because we had to
-
-start at Element K plus one.
+We have had to start at element $k+1$. If we set $k=400$, 
 
 So if I set K to be higher, let's say K is 400.
+
+```{python}
+plot_gaussian_kernel(fwhm=fwhm, kstyles={100: 'w', 25: 'lightgray'})
+```
 
 Now, in this case, you know, the Gaussian is kind of the same here.
 
@@ -496,42 +409,7 @@ of the full width at half maximum to see how that affects the smoothness of the 
 And I will see you in the next video.
 
 
-```{python}
-## implement the filter
 
-# initialize filtered signal vector
-filtsigG = copy.deepcopy(noisy_signal)
-
-# # implement the running mean filter
-for i in range(k+1,n-k):
-    # each point is the weighted average of k surrounding points
-    filtsigG[i] = np.sum( noisy_signal[i-k:i+k+1]*gauss_win )
-
-# plot
-plt.plot(time,noisy_signal,'r',label='Original')
-plt.plot(time,filtsigG,'k',label='Gaussian-filtered')
-
-plt.xlabel('Time (s)')
-plt.ylabel('amp. (a.u.)')
-plt.legend()
-plt.title('Gaussian smoothing filter')
-
-## for comparison, plot mean smoothing filter
-
-# initialize filtered signal vector
-filtsigMean = copy.deepcopy(noisy_signal)
-
-# implement the running mean filter
-# note: using mk instead of k to avoid confusion with k above
-mk = 20 # filter window is actually mk*2+1
-for i in range(mk+1,n-mk-1):
-    # each point is the average of k surrounding points
-    filtsigMean[i] = np.mean(noisy_signal[i-mk:i+mk+1])
-
-plt.plot(time,filtsigMean,'b',label='Running mean')
-plt.legend()
-plt.show()
-```
 
 
 ---

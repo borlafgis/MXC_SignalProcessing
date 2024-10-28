@@ -170,49 +170,55 @@ way to deal with edge effects on a case by case basis given your specific applic
 ## VIDEO: Gaussian-smooth a time series
 
 Gaussian smoothing is very similar to Mean-smoothing, but it uses a Gaussian
-weight instead of a constant weight of $1/n$. The formula looks like this:
+weight instead of a constant weight of $1/n$.
 
 \begin{equation}
     y_t = \sum^{t+k}_{i=t-k} x_i g_i
 \end{equation}
 
-The formula is nearly the same as in the case of the gaussian smoothing filter.
-The mean smoothing filter had another term outside the summation here, and that
-term was dividing by the total number of points in the kernel, which was
-$2k + 1$. The gaussian filter uses a weighting function $g_i$, a function that
-encloses an area of one (total probability density is one).
-
-The result of a gaussian filter tends to be smoother than those of its
-mean-based counterpart, albeit the edges are even more roughen up.
-
-### The gaussian window/kernel
-
-A Gaussian  starts at zero and it ends at zero and it goes up to one. The
-formula is:
+The mean smoothing filter had fraction outside the the sum, dividing the point
+count within the kernel ($n = 2k + 1$). The gaussian filter
+uses a weighting function $g_i$, that encloses a total area of one.
+Its formula typically is defined in terms of the mean ($\mu$) and stadard
+deviation ($\sigma$) 
 
 \begin{equation}
-    g = \exp \left( \frac{-4 \ln (2) t^2}{w^2} \right)
+    g (x) =
+    \frac{1}{\sigma \sqrt{2 \pi}}
+    \exp \left( - \frac{(x - \mu)^2}{2 \sigma^2}\right)
 \end{equation}
 
-The important thing about this formula to recognize is $e$ ($\exp$) to the
-$-t^2$ over something. The $t$ refers to time and it's good to have time be
-centered at zero because the maximum weight is reached (one?) at that point,
-$t=0$
+In the context of signal processing the gaussian is defined based on the 
+full width at half maximum. FWHM is the horizontal distance between the
+sides of the distribution at its the vertical-mid point (50% gain). Ultimately
+it reflects the same information as $\sigma$: how wide is the
+distribution.
 
-Note this is a more intuitive formulation of the Gaussian that allows you to
-specify $w$ parameter, which controls the width of the distribution in terms
-of a quantity called full width at half maximum (FWHM).
+\begin{equation}
+    \mathrm{FWHM} = w = \sigma \sqrt{8 \ln 2}
+\end{equation}
 
-FWHM is the distance horizontal between the two closest points to the
-vertical-mid point of the distribution (50% gain). It is an intuitive parameter
-because you can think about it in terms of how much smoothing you want to apply.
+If the kernel is centered at $0$, the formula in terms of FWHM becomes:
 
-So if you want to apply, let's say ten milliseconds of smoothing, you set
-$w = 10$.
+\begin{equation}
+    g (x) =
+    \frac{2 \sqrt{\ln 2}}{w \sqrt{\pi}}
+    \exp \left(  - \frac{4 \ln (2) x^2}{w^2} \right)
+    = \frac{2 \sqrt{\ln 2}}{w \sqrt{\pi}} g_{pt} (t)
+\end{equation}
 
-#### Python implementation.
+### An example kernel
 
-A python implementation of the gaussian kernel would look like this:
+We can illustrate the concept using right part of the formula $(g_{r})$ to
+make a kernel with FWHM $0.5$ and a peak gain of $1$.
+
+
+with $w = 25$. On layman terms, this means we will apply 25 ms.
+of smoothing, as most of the weight of the distribution is concetrated within
+the FWHM. It is also necessary to define the radius of the
+kernel $(k)$, whose length will bo $2k + 1$ time points. These two parameters
+should be set ensuring the edges of the distribution defined by $w$
+overlap the edges of the widow defined by $k$.
 
 ```{python}
 @nb.jit
@@ -224,78 +230,66 @@ def make_gaussian(srate, radius, fwhm):
     return time, gain
 ```
 
-Gaussian kernels are defined by their FWHM, and $k$, which represents the
-temporal span of the kernel (from $-k$ to $+k$). @fig-gauss-kernel shows three 
-kernels with $FWHM = 25$, and three diffrent but window sizes. The first thing
-we notice is that the empirical $FWHM$ depicted on the legend is not exactly
+@fig-gauss-kernel shows three examples with a varying $k$. The first thing
+we notice is that the empirical FWHM depicted on the legend is not exactly
 the same. This is due several factors, with sampling rate playing the biggest
-role (We have a sample, not an infinite number of time points).
-
-When $k = 10$, the kernel is a narrow window with a short time span. In fact,
-it is too short, as the gain do not reach the bottom. The empirical FWHM
-is shifted upwards, becoming the lowest point of the kernel, instead of the
-vertical mid-point. $k = 25$ is a more reasonable value, and $k = 50$ is even 
-better, reaching down to near-zero vales.
-It's always good to check these filters that you are applying to your data set.
+role (We do not have an infinite number points).
 
 ```{python}
 #| label: fig-gauss-kernel
 #| fig-cap: "Relationship between $k$ and FWHM"
-
-## create Gaussian kernel
-# kernel radius
-k = 100
-
-# full-width half-maximum: the key Gaussian parameter
-fwhm = 25 # in ms
-
 def plot_gaussian_kernel(fwhm, kstyles):
     arrow_kwargs = {'arrowprops': {'arrowstyle': '<->'}}
     style = {'facecolor': 'w', 'edgecolor': 'k', 'boxstyle': 'round,pad=.2'}
 
     for k, color in kstyles.items():
 
-        # Gaussian kernel
         times, gains = make_gaussian(srate, radius=k, fwhm=fwhm)
-        plt.plot(times, gains, color='k')
+        plt.plot(times, gains, color='k') # Plot gaussian
 
-        plt.axhline(.5, color='k', ls=':', lw=1, zorder=0)
-
-        # FWHM
         fwhm_0 = np.argmin( (gains[:k]-.5)**2 )
         fwhm_1 = np.argmin( (gains[k:]-.5)**2 ) + k # re-set indexing
         emp_fwhm = times[fwhm_1] - times[fwhm_0]
         plt.plot(
             [times[fwhm_0],times[fwhm_1]], [gains[fwhm_0],gains[fwhm_1]],
-            'o-',
-            label=f"k = {k}; Emp. FWHM = {emp_fwhm:.0f}",
-            )
+            'o-', label=f"k = {k}; Emp. FWHM = {emp_fwhm:.0f}") # Emp. FWHM
         
-        # show window length
-        start, end, gain0 = times[0], times[-1], gains[0]
+        start, end, gain0 = times[0], times[-1], gains[0] # Win. len
         plt.fill_between(x=times, y1=gain0, y2=gains, color=color)
         plt.annotate('', xy=(start, gain0), xytext=(end ,gain0), **arrow_kwargs)
         plt.text(0, gain0, f"k={k}", ha='center', va='center', bbox=style)
 
-    # then normalize Gaussian to unit energy
-    gauss_win = gains / np.sum(gains)
     plt.title(f"Gaussian kernel with target FWHM = {fwhm:.02f} ms")
     plt.xlabel('Time (ms)')
     plt.ylabel('Gain')
     plt.legend()
 
-plot_gaussian_kernel(fwhm=fwhm, kstyles={50: 'gray', 25: 'lightgray', 12: 'w'})
+plot_gaussian_kernel(fwhm=25, kstyles={37: 'gray', 25: 'lightgray', 12: 'w'})
 ```
 
-$k$ should be long enough so the edges of the kernel it defines, and the
-edges of the Gaussian defined by FWHM overlap ($3\sigma$), but not longer.
-There are two reasons for that: to avoid having too many points with very
-little weight (gain?), and to avoid edge effects (see next section).
+When $k = 12$, the kernel is a narrow window with a short time span. In fact,
+it is too short, as the gain does not reach the bottom. The empirical FWHM
+is shifted upwards, becoming the lowest point of the kernel, instead of the
+vertical mid-point. $k = 25$ still is too low, whereas $k = 37$ is a reasonable
+value, reaching down to near-zero vales. Note the kernel should not be too wide,
+as the computational burden and the edge effects would increase, with very
+little impact on the quality of the result. @fig-wide-gaussian shows a kernel
+with $k = 100$ window, where most points will have very little impact, as points
+past $\pm 30$ have  near-zero gains. Thus, it is good to have the smallest
+possible $k$ that tapers down to $\approx 0$.
 
-The last thing to note about the gaussian is it must be normalized to unit
-energy $\left( \sum g = 1 \right)$. Otherwise, the scale of the filtered signal
-would be different from the original. Thus, we divide every gain by the sum of
-all of them.
+```{python}
+#| label: fig-wide-gaussian
+#| fig-cap: "Wide gaussian"
+plot_gaussian_kernel(fwhm=25, kstyles={100: 'w', 25: 'lightgray'})
+```
+
+Note @fig-gauss-kernel and @fig-wide-gaussian both use $g_{pt}$ to generate the
+kernels, which is not the complete formula of the gaussian. Thus, they are not
+normalized $\left( \sum g \neq 1 \right)$. If applied, they would return a
+filtered signal with a different scale than the original. To avoid this issue
+is necessary to use the complete formula, or to normalize by dividing each gain
+by the sum of all of them.
 
 ## The actual filtering
 
@@ -333,6 +327,9 @@ plt.legend()
 plt.title('Gaussian smoothing filter');
 ```
 
+The result of a gaussian filter tends to be smoother than those of its
+mean-based counterpart, albeit the edges are even more roughen up.
+
 The Gaussian filter  gives us a smoother time series compared to the running
 mean filter. Which one is more useful is application-dependant. These two
 filters are particularly useful when the noise is normally distributed around
@@ -340,77 +337,13 @@ the signal.
 
 ### Edge effects
 
-We have had to start at element $k+1$. If we set $k=400$, 
-
-So if I set K to be higher, let's say K is 400.
-
-```{python}
-plot_gaussian_kernel(fwhm=fwhm, kstyles={100: 'w', 25: 'lightgray'})
-```
-
-Now, in this case, you know, the Gaussian is kind of the same here.
-
-So maybe you think, well, it doesn't really matter.
-
-These are all zeros, but it does matter because when we get to implementing the filter now the edge
-
-effects are much, much bigger.
-
-I would say this is unacceptably large, particularly considering that we don't need to have the filter
-
-go all the way out here.
-
-This is useless.
-
-These are pretty much all zeros.
-
-So that's why it's good to have K be as small as it possibly can be given that this kernel is still
-
-tapering down to zero.
-
-Okay.
-
-There's one more thing I want to show you in this video, which is why it's important to normalize the
-
-Gaussian to unit energy.
-
-And that's really all about not dividing by anything here outside this summation function.
-
-So what I'm going to do is comment out this line, rerun this cell.
-
-Now, this plot doesn't change at all because the plotting happened before the normalization.
-
-And now watch what happens when I run the filter.
-
-So the filtered signal is now this black line.
-
-It's kind of the same as this.
-
-It's just that it's scaled all the way up.
-
-So now I'll go back.
-
-This looks really ugly to me.
-
-I want to I want to end this video with a nice picture.
-
-All right.
-
-That's a good way to end this video.
-
-So I hope you feel like you learned something about the Gaussian smoothing filter and how it differs
-
-from the mean smoothing filter.
-
-I encourage you, as always, to spend some time playing around with this code, trying different values
-
-of the full width at half maximum to see how that affects the smoothness of the result.
-
-And I will see you in the next video.
 
 
+### Normalization
 
-
+It is important to normalize the Gaussian to unit energy by dividing by the sum
+of the kernel. If we did not, the filtered signal would not retain the same
+scale as the original signal.
 
 ---
 # VIDEO: Gaussian-smooth a spike time series

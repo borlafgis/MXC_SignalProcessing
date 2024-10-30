@@ -6,15 +6,19 @@ jupyter: python3
 ## Imports and signal generation
 
 We will create a signal with a sampling rate of 1000Hz (1000 samples/s), and a
-length of three seconds. It will be created by linear interolation between some 
-random time points ($p = 15$).
+length of three seconds (@signal-gen). It will be created by linear interolation between some 
+random time points $(p = 15)$.
 
 ```{python}
+#| label: signal-gen
+#| caption: "Imports and signal generation"
 import numba as nb
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.io as sio
 import scipy.signal
+from scipy.signal import windows as win
+import scipy.stats as stats
 from scipy import *
 import copy
 
@@ -50,11 +54,11 @@ plt.plot(pure_signal)
 ## VIDEO: Mean-smooth a time series
 
 _Mean filter works by setting each data point in the filtered signal to be an
-average of the surrounding points from the original signal._
+average of the surrounding points from the original signal._ @eq-mean-filter
 
-\begin{equation}
+$$
     y_t = \frac{1}{ 2k + 1 } \sum^{t+k}_{i=t-k} x_i
-\end{equation}
+$$ {#eq-mean-filter}
 
 _Now the number of data points that you go backwards in time and forwards in
 time ($k$) is the key parameter of the mean smoothing filter, and that's
@@ -74,6 +78,8 @@ spectral multiplication. That's thanks to something called the convolution
 theorem._
 
 ```{python}
+#| label: mean-filter
+#| caption: "Python implementation of the mean filter"
 
 @nb.jit
 def mean_filter(signal, radius):
@@ -112,13 +118,11 @@ the same thing as the window size in milliseconds. But that's generally not the
 case for sampling rates other than 1000._
 
 ```{python}
-#| label: mean-smoothing
-#| fig-cap: "Mean filter"
+#| label: fig-run-mean
+#| fig-cap: "plot the noisy and filtered signals"
 # compute window size in milliseconds (ms)
 window_diameter = 1000*(2 * radius+1) / srate
 
-#| label: fig-run-mean
-#| fig-cap: "plot the noisy and filtered signals"
 plt.plot(time, noisy_signal, lw=.1, label='Original')
 plt.plot(time, mean_filt, color='k', label='filtered')
 
@@ -172,48 +176,97 @@ way to deal with edge effects on a case by case basis given your specific applic
 Gaussian smoothing is very similar to Mean-smoothing, but it uses a Gaussian
 weight instead of a constant weight of $1/n$.
 
-\begin{equation}
+$$
     y_t = \sum^{t+k}_{i=t-k} x_i g_i
-\end{equation}
+$$ {#eq-gauss-filt}
 
 The mean smoothing filter had fraction outside the the sum, dividing the point
 count within the kernel ($n = 2k + 1$). The gaussian filter
 uses a weighting function $g_i$, that encloses a total area of one.
 Its formula typically is defined in terms of the mean ($\mu$) and stadard
-deviation ($\sigma$) 
+deviation ($\sigma$, @eq-gauss-normal) 
 
-\begin{equation}
+$$
     g (x) =
     \frac{1}{\sigma \sqrt{2 \pi}}
     \exp \left( - \frac{(x - \mu)^2}{2 \sigma^2}\right)
-\end{equation}
+    = \frac{1}{\sigma \sqrt{2 \pi}} g_{pt}(t)
+$$ {#eq-gauss-normal}
 
-In the context of signal processing the gaussian is defined based on the 
-full width at half maximum. FWHM is the horizontal distance between the
+In signal processing the gaussian is defined based on the concept of the
+full width at half maximum (@eq-fwhm). FWHM is the horizontal distance between the
 sides of the distribution at its the vertical-mid point (50% gain). Ultimately
 it reflects the same information as $\sigma$: how wide is the
 distribution.
 
-\begin{equation}
+$$
     \mathrm{FWHM} = w = \sigma \sqrt{8 \ln 2}
-\end{equation}
+$$ {#eq-fwhm}
 
 If the kernel is centered at $0$, the formula in terms of FWHM becomes:
 
-\begin{equation}
-    g (x) =
-    \frac{2 \sqrt{\ln 2}}{w \sqrt{\pi}}
-    \exp \left(  - \frac{4 \ln (2) x^2}{w^2} \right)
+$$
+    g (x)
+    = \frac{2 \sqrt{\ln 2}}{w \sqrt{\pi}}
+        \exp \left(  - \frac{4 \ln (2) x^2}{w^2} \right)
     = \frac{2 \sqrt{\ln 2}}{w \sqrt{\pi}} g_{pt} (t)
-\end{equation}
+$$ {#eq-gauss-fwhm}
+
+Gaussian filters can use the the gaussian distribution, or use a gaussian window
+($g_{pt}$ in @eq-gauss-normal and @eq-gauss-fwhm).
+
+$$
+    \mathrm{window}
+    = \exp \left( - \frac{1}{2} \left( \frac{n}{\sigma} \right)^2 \right)
+    = \exp \left(  - \frac{4 \ln (2) x^2}{w^2} \right)
+$$ {#eq-gauss-win}
+
+A distribution has an area of one, whereas a window has a peak value of 1
+(@fig-dist-vs-win red and blue lines, respectively).
+This distinction is important because if the kernel is based on the the
+distribution no normalization factor is needed. However, if the kernel is based
+on the gaussian window it will need to be normalized by dividing by its sum.
+Otherwise, the scale of the filtered signal will differ from the original.
+
+
+```{python}
+#| label: fig-dist-vs-win
+#| caption: "Distribution vs. Window"
+radius_samples = 50
+diameter_samples =  2 * radius_samples + 1
+
+mu_x, sigma_x = 0, 1
+w_x = sigma_x * np.sqrt(8 * np.log(2))
+
+radius_x = 3 * sigma_x
+x = np.linspace(mu_x - radius_x, mu_x + radius_x, diameter_samples)
+
+sigma_samples = 50/(radius_x/sigma_x)
+x_samples =  np.arange(-radius_samples, radius_samples + 1) # "offset"
+
+y = {}
+part_sigma = 1/(sigma_x * np.sqrt(2 * np.pi))
+y['$g(\mu, \sigma)$'] = part_sigma * np.exp(-((x - mu_x)**2)/(2 * sigma_x**2))
+y['$g(\mu, \sigma)$ (ref.)'] = stats.norm.pdf(x, mu_x, sigma_x)
+
+part_w = (2 * np.sqrt(np.log(2)))/(w_x * np.sqrt(np.pi))
+y['$g(w)$'] = part_w * np.exp(- (4 * np.log(2) * x**2)/(w_x**2))
+
+y['Win. $(\sigma)$'] = np.exp( -(1/2) * (x_samples/sigma_samples)**2 )
+y['Win. $(\sigma)$ (ref.)'] = signal.windows.gaussian(diameter_samples, sigma_samples)
+y['Win. $(w)$'] = np.exp( -(4 * np.log(2) * x**2) / (w_x**2) )
+y[r'Win. $(\mu, \sigma) \rightarrow g(\sigma)$'] = part_w * y['Win. $(w)$']
+y[r'Win. $(w) \rightarrow g(w)$'] = part_w * y['Win. $(w)$']
+
+for z, (label, yvalues) in enumerate(y.items(), start=1):
+    plt.plot(x, yvalues, label=label, zorder=-z)
+plt.legend()
+```
 
 ### An example kernel
 
 We can illustrate the concept using right part of the formula $(g_{r})$ to
-make a kernel with FWHM $0.5$ and a peak gain of $1$.
-
-
-with $w = 25$. On layman terms, this means we will apply 25 ms.
+make a kernel with $w = 25$. On layman terms, this means we will apply 25 ms.
 of smoothing, as most of the weight of the distribution is concetrated within
 the FWHM. It is also necessary to define the radius of the
 kernel $(k)$, whose length will bo $2k + 1$ time points. These two parameters
@@ -221,6 +274,8 @@ should be set ensuring the edges of the distribution defined by $w$
 overlap the edges of the widow defined by $k$.
 
 ```{python}
+#|label: gauss-window
+#|caption: "Gaussian window"
 @nb.jit
 def make_gaussian(srate, radius, fwhm):
     k = radius
@@ -245,6 +300,7 @@ def plot_gaussian_kernel(fwhm, kstyles):
     for k, color in kstyles.items():
 
         times, gains = make_gaussian(srate, radius=k, fwhm=fwhm)
+        plt.axhline(.5, color='k', ls=':', zorder=0)
         plt.plot(times, gains, color='k') # Plot gaussian
 
         fwhm_0 = np.argmin( (gains[:k]-.5)**2 )
@@ -294,6 +350,8 @@ by the sum of all of them.
 ## The actual filtering
 
 ```{python}
+#| label: fig-gaussian-filter
+#| fig-cap: "Result of the gaussian filter"
 
 @nb.jit
 def gaussian_filter(signal, kernel):
@@ -335,46 +393,41 @@ mean filter. Which one is more useful is application-dependant. These two
 filters are particularly useful when the noise is normally distributed around
 the signal.
 
-### Edge effects
-
-
-
-### Normalization
-
-It is important to normalize the Gaussian to unit energy by dividing by the sum
-of the kernel. If we did not, the filtered signal would not retain the same
-scale as the original signal.
-
----
 # VIDEO: Gaussian-smooth a spike time series
----
 
+I'm going to show you the impact of applyng a Gaussian smoothing filter over
+a spiky time series.
 
+## The time series
 
-```python
+The time series will contain 300 spikes, whose separation will be defined by
+an exponential distribution, which is $e$ to the some random numbers.
+
+An spike appears afer every 'space', looking like:
+
+```{python}
 ## generate time series of random spikes
 
 # number of spikes
-n = 300
+spike_count = 300
 
 # inter-spike intervals (exponential distribution for bursts)
-isi = np.round(np.exp( np.random.randn(n) )*10)
+spike_spaces = np.round(np.exp( np.random.randn(spike_count) )*10)
 
 # generate spike time series
-spikets = np.zeros(int(sum(isi)))
+spiky_signal = np.zeros(int(sum(spike_spaces)))
 
-for i in range(0,n):
-    spikets[ int(np.sum(isi[0:i])) ] = 1
+for i in range(0, spike_count):
+    spiky_signal[ int(np.sum(spike_spaces[0:i])) ] = 1
 
 
 # plot
-plt.plot(spikets)
+plt.plot(spiky_signal, lw=.1)
 plt.xlabel('Time (a.u.)')
 plt.show()
 ```
 
-
-```python
+```{python}
 ## create and implement Gaussian window
 
 # full-width half-maximum: the key Gaussian parameter
@@ -389,21 +442,160 @@ gauswin = np.exp( -(4*np.log(2)*gtime**2) / fwhm**2 )
 gauswin = gauswin / np.sum(gauswin)
 
 # initialize filtered signal vector
-filtsigG = np.zeros(len(spikets))
+filtsigG = np.zeros(len(spiky_signal))
 
 # implement the weighted running mean filter
-for i in range(k+1,len(spikets)-k):
-    filtsigG[i] = np.sum( spikets[i-k:i+k+1]*gauswin )
+for i in range(k+1,len(spiky_signal)-k):
+    filtsigG[i] = np.sum( spiky_signal[i-k:i+k+1]*gauswin )
 
 
 # plot the filtered signal (spike probability density)
-plt.plot(spikets,'b',label='spikes')
+plt.plot(spiky_signal,'b',label='spikes')
 plt.plot(filtsigG,'r',label='spike p.d.')
 plt.legend()
 plt.title('Spikes and spike probability density')
 plt.show()
 ```
 
+So then the idea is that each ISI, there's going to be another spike.
+
+So let me show you what this looks like.
+
+So here's the Spike Time series.
+
+This is time just an arbitrary units.
+
+And then you can see there's a series of spikes.
+
+I'll zoom in so you can get a bit of a better look.
+
+And what's interesting about these exponential distributions like this is that the spikes will have
+
+this kind of bursty nature to them.
+
+So you'll see spikes that happen in quick succession and relatively few spikes that are just kind of
+
+hanging out all on their own.
+
+So let me show you what this easy variable looks like so we can say plot easy.
+
+Sorry.
+
+Let me clear and then plot so you can see this is the duration of time between each successive spike.
+
+And I can show you a histogram that might be a little clearer.
+
+I say, let's say 30.
+
+So you can see most spikes happen in quick succession.
+
+There's a small time lag between successive spikes and the longer the time lag between individual spikes,
+
+the less likely it is to see that long of an inter spike interval.
+
+All right.
+
+So let's go back to the plot here.
+
+And now what I do is apply the Gaussian smoothing filter that you learned about previously.
+
+In terms of the signal processing aspects in this video, there isn't a whole lot new.
+
+It's more about seeing an additional application of something you just learned.
+
+So here I define the full width at half maximum, the time vector for Gaussian.
+
+Now, in a previous video I was multiplying this by 1000 and dividing by the sampling rate and that
+
+was to convert this time vector into milliseconds.
+
+Oops.
+
+And this is actually wrong.
+
+This is really just indices, little copy paste error there.
+
+This shows why it's always important to check your code carefully when you copy and paste things anyway.
+
+But fortunately that doesn't change the actual code.
+
+It's just a little comment.
+
+Here I define the Gaussian window, normalize the Gaussian to unit energy, and then loop through time
+
+and take the sum of the Gaussian weighted data from the previous k time points to the following K time
+
+points.
+
+And then I plot the filtered signal.
+
+So here's what that looks like.
+
+It's the red line.
+
+You can interpret this red line as being like a probability density.
+
+So what is the probability of observing a spike at any given time point?
+
+And that you get by essentially convolving the spike time series with the Gaussian window.
+
+That's really what this is.
+
+This is really convolution.
+
+So when you can see what it's doing is just basically smoothing out the spike.
+
+Time series like this.
+
+So this red line could be more easily interpretable.
+
+Maybe this is more amenable to certain data analyses.
+
+And I just want to show you a few different options for the full width at half maximum and how that
+
+affects the resulting image.
+
+So if we set this to let's say I set it to five, run the code again.
+
+Now you can see this hasn't really done a whole lot.
+
+You know, the Gaussian now is so narrow, all it's really doing is like smoothing out each individual
+
+spike.
+
+It doesn't show much of an interesting time series.
+
+In contrast, if I do, let's say 95, that's going to be too much.
+
+So I think this is too much smoothing with 95 element full width at half maximum.
+
+You can see this is mostly flat.
+
+Other than extreme points here, like when there's no spikes here, you don't really see a whole lot
+
+of interesting dynamics here.
+
+So what exactly to set this parameter to is difficult to say a priori.
+
+It depends on your specific application.
+
+It depends on how much smoothing you think is appropriate for the data set that you are working with.
+
+But the good thing to do is to try around several different smoothing parameters and see what the effects
+
+are and what I like to do and what I always recommend when experimenting with different parameters for
+
+analysis and filtering is to first define the extreme boundaries where the filter parameter doesn't
+
+really make a lot of sense.
+
+So that's why I showed you five indices and I showed you 95.
+
+I think those are both extreme values that aren't really sensible for this data set.
+
+And to me, 15 seems to look pretty good.
+
+It still has a good amount of temporal precision while still showing some nice variability over time.
 
 ---
 # VIDEO: Denoising via TKEO

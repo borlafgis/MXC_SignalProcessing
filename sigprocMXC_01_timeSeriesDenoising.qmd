@@ -280,7 +280,7 @@ overlap the edges of the widow defined by $k$.
 def make_gaussian(srate, radius, fwhm):
     k = radius
     positions = np.arange(-k, k + 1)
-    time = 1000 * positions/srate
+    time = positions/srate
     gain = np.exp( -(4 * np.log(2) * time**2) / fwhm**2 )
     return time, gain
 ```
@@ -299,7 +299,7 @@ def plot_gaussian_kernel(fwhm, kstyles):
 
     for k, color in kstyles.items():
 
-        times, gains = make_gaussian(srate, radius=k, fwhm=fwhm)
+        times, gains = make_gaussian(srate/1000, radius=k, fwhm=fwhm)
         plt.axhline(.5, color='k', ls=':', zorder=0)
         plt.plot(times, gains, color='k') # Plot gaussian
 
@@ -358,15 +358,16 @@ def gaussian_filter(signal, kernel):
 
     # initialize filtered signal vector
     filtered = signal.copy()
+    n = len(filtered)
 
     # Calculate the kernel radius and the normalizer
     k = int((len(kernel) - 1)/2)
-    normalizer = np.sum(kernel)
-    
+    norm_kernel = kernel/np.sum(kernel)
+
     # Apply the filter
     for i in range(k+1, n-k):
         # each point is the weighted average of k surrounding points
-        filtered[i] = np.sum(signal[i-k:i+k+1] * kernel)/normalizer
+        filtered[i] = np.sum(signal[i-k:i+k+1] * norm_kernel)
     
     return filtered
 
@@ -402,8 +403,9 @@ a spiky time series.
 
 The time series will contain 300 spikes, whose separation will be defined by
 an exponential distribution, which is $e$ to the some random numbers.
-
-An spike appears afer every 'space', looking like:
+What's interesting about these exponential distributions like this is that
+the spikes will have a burst-like distribution: in some cases they appear in
+quick succession, whereas they can be widely spaced in other cases.
 
 ```{python}
 ## generate time series of random spikes
@@ -416,98 +418,29 @@ spike_spaces = np.round(np.exp( np.random.randn(spike_count) )*10)
 
 # generate spike time series
 spiky_signal = np.zeros(int(sum(spike_spaces)))
-
 for i in range(0, spike_count):
     spiky_signal[ int(np.sum(spike_spaces[0:i])) ] = 1
 
-
-# plot
-plt.plot(spiky_signal, lw=.1)
-plt.xlabel('Time (a.u.)')
-plt.show()
+plt.hist(spike_spaces, bins='auto');
 ```
+
+As you can see, most spikes happen in quick succession, whereas the longer the
+interval, the more unlikely it becomes.
+
+Now we will apply the Gaussian smoothing filter we saw earlier. In that context,
+we were multiplying by 1000 and dividing by the sampling rate to convert the
+time vector to milliseconds.
 
 ```{python}
-## create and implement Gaussian window
-
-# full-width half-maximum: the key Gaussian parameter
-fwhm = 25 # in points
-
-# normalized time vector in ms
-k = 100;
-gtime = np.arange(-k,k+1)
-
-# create Gaussian window
-gauswin = np.exp( -(4*np.log(2)*gtime**2) / fwhm**2 )
-gauswin = gauswin / np.sum(gauswin)
-
-# initialize filtered signal vector
-filtsigG = np.zeros(len(spiky_signal))
-
-# implement the weighted running mean filter
-for i in range(k+1,len(spiky_signal)-k):
-    filtsigG[i] = np.sum( spiky_signal[i-k:i+k+1]*gauswin )
-
+_, kernel1 = make_gaussian(1, radius=100, fwhm=25)
+spike_proba = gaussian_filter(spiky_signal, kernel1)
 
 # plot the filtered signal (spike probability density)
-plt.plot(spiky_signal,'b',label='spikes')
-plt.plot(filtsigG,'r',label='spike p.d.')
+plt.plot(spiky_signal, 'b', lw=.1, label='spikes')
+plt.plot(spike_proba, 'r',label='spike p.d.')
 plt.legend()
-plt.title('Spikes and spike probability density')
-plt.show()
+plt.title('Spikes and spike probability density');
 ```
-
-So then the idea is that each ISI, there's going to be another spike.
-
-So let me show you what this looks like.
-
-So here's the Spike Time series.
-
-This is time just an arbitrary units.
-
-And then you can see there's a series of spikes.
-
-I'll zoom in so you can get a bit of a better look.
-
-And what's interesting about these exponential distributions like this is that the spikes will have
-
-this kind of bursty nature to them.
-
-So you'll see spikes that happen in quick succession and relatively few spikes that are just kind of
-
-hanging out all on their own.
-
-So let me show you what this easy variable looks like so we can say plot easy.
-
-Sorry.
-
-Let me clear and then plot so you can see this is the duration of time between each successive spike.
-
-And I can show you a histogram that might be a little clearer.
-
-I say, let's say 30.
-
-So you can see most spikes happen in quick succession.
-
-There's a small time lag between successive spikes and the longer the time lag between individual spikes,
-
-the less likely it is to see that long of an inter spike interval.
-
-All right.
-
-So let's go back to the plot here.
-
-And now what I do is apply the Gaussian smoothing filter that you learned about previously.
-
-In terms of the signal processing aspects in this video, there isn't a whole lot new.
-
-It's more about seeing an additional application of something you just learned.
-
-So here I define the full width at half maximum, the time vector for Gaussian.
-
-Now, in a previous video I was multiplying this by 1000 and dividing by the sampling rate and that
-
-was to convert this time vector into milliseconds.
 
 Oops.
 

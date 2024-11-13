@@ -6,15 +6,17 @@ jupyter: python3
 ## Imports and signal generation
 
 We will create a signal with a sampling rate of 1000Hz (1000 samples/s), and a
-length of three seconds (@signal-gen). It will be created by linear interolation between some 
+length of three seconds (@fig-signal-gen). It will be created by linear interolation between some 
 random time points $(p = 15)$.
 
 ```{python}
-#| label: signal-gen
-#| caption: "Imports and signal generation"
+#| label: fig-signal-gen
+#| fig-cap: "Python implementation of the mean filter"
+
 import numba as nb
 import numpy as np
 import matplotlib.pyplot as plt
+from pprint import pprint
 import scipy.io as sio
 import scipy.signal
 from scipy.signal import windows as win
@@ -78,8 +80,8 @@ spectral multiplication. That's thanks to something called the convolution
 theorem._
 
 ```{python}
-#| label: mean-filter
-#| caption: "Python implementation of the mean filter"
+#| label: fig-mean-filter
+#| fig-cap: "Python implementation of the mean filter"
 
 @nb.jit
 def mean_filter(signal, radius):
@@ -231,7 +233,7 @@ Otherwise, the scale of the filtered signal will differ from the original.
 
 ```{python}
 #| label: fig-dist-vs-win
-#| caption: "Distribution vs. Window"
+#| fig-cap: "Distribution vs. Window"
 radius_samples = 50
 diameter_samples =  2 * radius_samples + 1
 
@@ -357,7 +359,7 @@ by the sum of all of them.
 def gaussian_filter(signal, kernel):
 
     # initialize filtered signal vector
-    filtered = signal.copy()
+    filtered = np.full(signal.shape, np.nan)#signal.copy()
     n = len(filtered)
 
     # Calculate the kernel radius and the normalizer
@@ -408,6 +410,9 @@ the spikes will have a burst-like distribution: in some cases they appear in
 quick succession, whereas they can be widely spaced in other cases.
 
 ```{python}
+#| label: fig-spike-times
+#| fig-cap: "Histogram of the wait time between spikes"
+
 ## generate time series of random spikes
 
 # number of spikes
@@ -424,7 +429,7 @@ for i in range(0, spike_count):
 plt.hist(spike_spaces, bins='auto');
 ```
 
-As you can see, most spikes happen in quick succession, whereas the longer the
+As you can see in @fig-fwhm-effect, most spikes happen in quick succession, whereas the longer the
 interval, the more unlikely it becomes.
 
 Now we will apply the Gaussian smoothing filter we saw earlier. In that context,
@@ -432,167 +437,416 @@ we were multiplying by 1000 and dividing by the sampling rate to convert the
 time vector to milliseconds.
 
 ```{python}
-_, kernel1 = make_gaussian(1, radius=100, fwhm=25)
-spike_proba = gaussian_filter(spiky_signal, kernel1)
+#| label: fig-fwhm-effect
+#| fig-cap: "Impact of the FWHM"
 
 # plot the filtered signal (spike probability density)
-plt.plot(spiky_signal, 'b', lw=.1, label='spikes')
-plt.plot(spike_proba, 'r',label='spike p.d.')
+plt.plot(spiky_signal, 'lightgray', lw=.1, label='spikes')
+for fwhm, w in {5: 1, 25: 2, 95: 3}.items():
+    _, the_kernel = make_gaussian(1, radius=100, fwhm=fwhm)
+    plt.plot(gaussian_filter(spiky_signal, the_kernel), label=str(fwhm), lw=w)
+
+plt.ylim(bottom=0, top=.45)
 plt.legend()
 plt.title('Spikes and spike probability density');
 ```
 
-Oops.
+In @fig-fwhm-effect you can interpret the colored lines as the probability of
+observing a spike at any given point of time. his red line could have a simpler
+interpretation, or be more amenable to certain kinds of analyses.
 
-And this is actually wrong.
+The impact of the filter is largely dependant on this parametrization.
+Fore example, a window with $FWHM = 5$ barely performs some smoothing between
+spikes. The result with $FWHM = 25$ is reasonable, whereas $FWHM = 95$
+has a heavily smoothed result. Ultimately, the parametrization will depend on
+the specific application.
 
-This is really just indices, little copy paste error there.
+In general it is a good practise to find some extreme bounds outside of which
+the parametrization does not really make sense, and work from there to find
+appropiate values for the specific dataset. Going back to our  example, 15
+could be a reasonable value, showing rasonable time precision and variability.
 
-This shows why it's always important to check your code carefully when you copy and paste things anyway.
-
-But fortunately that doesn't change the actual code.
-
-It's just a little comment.
-
-Here I define the Gaussian window, normalize the Gaussian to unit energy, and then loop through time
-
-and take the sum of the Gaussian weighted data from the previous k time points to the following K time
-
-points.
-
-And then I plot the filtered signal.
-
-So here's what that looks like.
-
-It's the red line.
-
-You can interpret this red line as being like a probability density.
-
-So what is the probability of observing a spike at any given time point?
-
-And that you get by essentially convolving the spike time series with the Gaussian window.
-
-That's really what this is.
-
-This is really convolution.
-
-So when you can see what it's doing is just basically smoothing out the spike.
-
-Time series like this.
-
-So this red line could be more easily interpretable.
-
-Maybe this is more amenable to certain data analyses.
-
-And I just want to show you a few different options for the full width at half maximum and how that
-
-affects the resulting image.
-
-So if we set this to let's say I set it to five, run the code again.
-
-Now you can see this hasn't really done a whole lot.
-
-You know, the Gaussian now is so narrow, all it's really doing is like smoothing out each individual
-
-spike.
-
-It doesn't show much of an interesting time series.
-
-In contrast, if I do, let's say 95, that's going to be too much.
-
-So I think this is too much smoothing with 95 element full width at half maximum.
-
-You can see this is mostly flat.
-
-Other than extreme points here, like when there's no spikes here, you don't really see a whole lot
-
-of interesting dynamics here.
-
-So what exactly to set this parameter to is difficult to say a priori.
-
-It depends on your specific application.
-
-It depends on how much smoothing you think is appropriate for the data set that you are working with.
-
-But the good thing to do is to try around several different smoothing parameters and see what the effects
-
-are and what I like to do and what I always recommend when experimenting with different parameters for
-
-analysis and filtering is to first define the extreme boundaries where the filter parameter doesn't
-
-really make a lot of sense.
-
-So that's why I showed you five indices and I showed you 95.
-
-I think those are both extreme values that aren't really sensible for this data set.
-
-And to me, 15 seems to look pretty good.
-
-It still has a good amount of temporal precision while still showing some nice variability over time.
-
----
 # VIDEO: Denoising via TKEO
----
 
+_EMG stands for Electromyogram. The Myo refers to muscle and the gram is for
+measurement, and the electrode, of course, is for electricity.
+When you want to move your body somehow or grasp an object that's done through
+muscles, of course, and those muscles are moving because something in your
+brain is telling them to move. So there is an electrical signal that is
+generated in the brain. It travels down the spinal cord and that activates the
+muscles, for example, in your hand._
 
+_Now, if you were to measure from two electrodes that are closely spaced to
+each other like this, you would get an electrical (EMG) signal as shown in 
+@fig-emg. The EMG is used for many purposes, one of which is to determine when a
+movement was initiated._
 
-```python
+![EMG](emg.png){#fig-emg}
+
+_
+
+@fig-tkeo shows an EMG signal. _You can see it's a little bit noisy, there's
+some slow drifts, there's some fast activity_ and a couple of muscle twitches,
+ones larger than the others.
+
+_It's often of interest or clinical or scientific importance to determine
+exactly when a muscle was initiated. When you're doing this visually, it's
+often pretty easy to do because you just kind of look at it and you can spot
+when the onset happens. But for computer algorithms, it can sometimes be a
+little difficult to distinguish the background noise from the EMG signal of
+interest. Note this signal is quite clean!, sometimes the noise is as large as
+big as the mid-sized spikes we see._
+
+_There is a general denoising strategy abbreviated as TKEO, the 
+Kaiser Energy Tracking Operator. Each time point $t$ in the filtered signal
+$y$ is:_
+
+$$
+    y_t = x_t^2 - x_{t-1}x_{t+1}
+$$
+
+The impact of the filter is suppressing the noise while enhancing the signal.
+Let's load the data in Python and take a look on its contents.
+
+```{python}
+#| label: fig-emgdata
+#| caption: "EMG"
 # import data
 emgdata = sio.loadmat('TimeSeriesDenoising/emg4TKEO.mat')
 
-# extract needed variables
-emgtime = emgdata['emgtime'][0]
-emg  = emgdata['emg'][0]
+emg_time = emgdata['emgtime'][0]
+emg_measured = emgdata['emg'][0]
+pprint(emgdata)
+```
 
-# initialize filtered signal
-emgf = copy.deepcopy(emg)
+_There are three variables f fs that's probably the frequency of sampling,
+EMG time and the signal. If we plot the last two, the $x$ axis whould be the
+time in milliseconds, and $y$ would be the energy measurements measurements in 
+microvolts (e.g., 100 microvolts)._
 
-# the loop version for interpretability
-for i in range(1,len(emgf)-1):
-    emgf[i] = emg[i]**2 - emg[i-1]*emg[i+1]
-
-# the vectorized version for speed and elegance
-emgf2 = copy.deepcopy(emg)
-emgf2[1:-1] = emg[1:-1]**2 - emg[0:-2]*emg[2:]
-
-## convert both signals to zscore
-
-# find timepoint zero
-time0 = np.argmin(emgtime**2)
-
-# convert original EMG to z-score from time-zero
-emgZ = (emg-np.mean(emg[0:time0])) / np.std(emg[0:time0])
-
-# same for filtered EMG energy
-emgZf = (emgf-np.mean(emgf[0:time0])) / np.std(emgf[0:time0])
-
-
+```{python}
 ## plot
 # plot "raw" (normalized to max.1)
-plt.plot(emgtime,emg/np.max(emg),'b',label='EMG')
-plt.plot(emgtime,emgf/np.max(emgf),'m',label='TKEO energy')
+plt.plot(emg_time, emg_measured,'b',label='EMG')
 plt.xlabel('Time (ms)')
 plt.ylabel('Amplitude or energy')
 plt.legend()
-
-plt.show()
-
-# plot zscored
-plt.plot(emgtime,emgZ,'b',label='EMG')
-plt.plot(emgtime,emgZf,'m',label='TKEO energy')
-
-plt.xlabel('Time (ms)')
-plt.ylabel('Zscore relative to pre-stimulus')
-plt.legend()
-plt.show()
 ```
 
+_Here the filtered version of the signal is the original signal, and then we
+loop between the second and the second to-last point (the extremes are needed
+for filtering). Thus, these two points will be affected by edge effects._
 
----
-VIDEO: Median filter to remove spike noise
----
+So each time point I in the filtered signal is the $i^{th}$ time point in the
+data squared minus the product of the previous time point and the following
+time point.
+
+The algorithm can be applied within a for loop, or using vectorization. The
+former is easier to interpret, whereas the latter is advisable to retain 
+an adequate performance.
 
 
+```{python}
+#| label: fig-tkeo
+#| caption: "EMG"#| 
+
+looped = copy.deepcopy(emg_measured)
+for i in range(1, len(looped)-1):
+    looped[i] = emg_measured[i]**2 - emg_measured[i-1] * emg_measured[i+1]
+
+vectorized = copy.deepcopy(emg_measured)
+vectorized[1:-1] = emg_measured[1:-1]**2 - emg_measured[0:-2] * emg_measured[2:]
+```
+
+Note the original EMG signal and the filtered EMG signal, are no longer in 
+the same scale: the original is in Microvolts , whereas the filtered signal 
+now is in microvolt squared. A possibility to visualize them together is to 
+normalize the signals according to their maximum to plot them
+on the same graph. The filtered signal becomes a near-flat line.
+
+```{python}
+## plot
+# plot "raw" (normalized to max.1)
+plt.plot(emg_time, emg_measured/np.max(emg_measured),'b',label='EMG')
+plt.plot(emg_time, looped/np.max(looped),'m',label='TKEO energy')
+plt.xlabel('Time (ms)')
+plt.ylabel('Amplitude or energy')
+plt.legend()
+```
+
+To make this comparison it is useful to convert
+them to z-score, which is is defined as the signal minus its mean 
+divided by the standard deviation of the signal. In our example both statistics
+are calculated with the baseline of the data before 0 instead of all data
+points.This ensures variations appearing later on will be heavily enhanced.
+
+```{python}
+## convert both signals to zscore
+def zscore(time, signal):
+    idx0 = np.argmin(time**2)
+    baseline = signal[0:idx0]
+    return (signal - np.mean(baseline))/np.std(baseline)
+
+# plot zscored
+plt.plot(emg_time, zscore(emg_time, vectorized),'m',label='TKEO energy')
+plt.plot(emg_time, zscore(emg_time, emg_measured),'b',label='EMG')
+plt.xlabel('Time (ms)')
+plt.ylabel('Zscore relative to pre-stimulus')
+plt.legend();
+```
+
+Z-scores really show the difference in the signal-to-noise ratio between the
+original and the TKEO-filtered signal. The latter has score reaching of 800, 
+800 standard deviations greater than the pre-stimulus mean of the baseline
+period, whereas the original signal only reaches 20 for the largest event.
+All peaks are easier to detect when the EMG signal has been converted into
+energy compared to the original signal.
+
+# VIDEO: Median filter to remove spike noise
+
+The median filter is great for removing large spikes in time series data.
+It is calculated by sorting the data points by magnitude, and taking the 
+central value. If the number of observations is even the median is the
+mid-point between the observations closest to the centre. By picking this
+point, it avoids the influence of outliers.
+
+Is important to note median is not a linear (liner time complexity?). Thus,
+it is best to apply the median it over known outliers (or missing values),
+not over all points.
+
+In this case we will generate a signal that is the integral of random numbers
+(integrated white noise, Brownian noise). Some values (5%) will be replaced
+with random abnormal values.
+
+```{python}
+# create signal
+n = 2000
+signal = np.cumsum(np.random.randn(n))
+
+
+# proportion of time points to replace with noise
+propnoise = .05
+
+# find noise points
+noisepnts = np.random.permutation(n)
+noisepnts = noisepnts[0:int(n*propnoise)]
+
+# generate signal and replace points with noise
+signal[noisepnts] = 50+np.random.rand(len(noisepnts))*100
+
+
+# use hist to pick threshold
+plt.plot(signal);
+#plt.hist(signal,100);
+```
+
+noise.
+
+So here I just pick some proportion.
+
+So it's going to be 5% of all the data points randomly selected.
+
+And I'm going to replace those data points by some large number.
+
+And that's basically what happens here.
+
+So run all of this code here and then I will plot again the signal.
+
+So now you can see this is the original signal here.
+
+And there's all this spiking noise.
+
+Let me.
+
+I'll zoom in here a bit to give you a better idea of what this noise looks like.
+
+So here's some data that's going up and down.
+
+Whatever.
+
+And then we have one single data point of noise before it goes back down.
+
+It looks like it's carrot shaped.
+
+But I think you will see that this is really just single points of noise here.
+
+So the thing is that a mean smoothing or a Gaussian smoothing filter, like what you saw in previous
+
+videos of this section, is actually not going to be very useful here.
+
+And the reason is that the mean is still going to be drawn by these large data values.
+
+So the mean smoothing wood would run up all the way like this, which is not what you want.
+
+What you want for a time series like this, assuming that these are just random noise spikes, is to
+
+keep all of these, to preserve all of these data points here, and just eliminate this one data point
+
+with some combination of points around it.
+
+And this is really what the median filter is designed to do.
+
+So we want to do is loop over here and come up with the median, but not of all the data points, only
+
+of the data points that are particularly large.
+
+So to decide which values are particularly large, you need to come up with some kind of threshold.
+
+And then we say that any values that are above that threshold get replaced by the median of some number
+
+of numbers around them.
+
+So there are various ways that you can pick a threshold.
+
+One way might be based on some knowledge, some existing knowledge about the system or about the signal.
+
+And maybe you know that a value greater than 70 means that it's definitely going to be noise, and that
+
+should be removed.
+
+In this case, I don't really know.
+
+So my approach here is going to be to use a histogram.
+
+So I'm going to make a histogram of all the data values.
+
+And now I'm going to assume based on looking at this histogram that these are all real values here.
+
+And these are all of the outliers here.
+
+So I'm going to set this threshold let's say here.
+
+So that value is 58.
+
+So I'll set it to 57.
+
+That's going to cut off right here.
+
+So this was 40 before because, yeah, each time you generate random numbers, you'll come up with a
+
+different appropriate threshold.
+
+So 57 works good for this random number sequence.
+
+And maybe you will find a more appropriate threshold when you generate these data.
+
+Okay so 57.
+
+And now what I'm going to do is find all of the data points in the signal that are greater than that
+
+threshold.
+
+So that works out to be 81 data points.
+
+So here I initialize the filtered signal to be the original signal.
+
+And now I set k to be 20.
+
+You'll see in a second where how k comes into it.
+
+So now I'm looping over time points.
+
+But this is not all the time points in the signal.
+
+This is only the time points where the data are above the threshold.
+
+Okay.
+
+And then here is where all the action happens.
+
+I replace this value in the filtered signal with the median of the original signal from.
+
+Basically this is minus k to plus k relative to the current time point.
+
+Now I have these boundaries here.
+
+And that's because let me go back and plot this signal.
+
+Now, in this case, it just happens to be by chance that there are no strong spikes in the signal really
+
+early or really late.
+
+But it could happen that the one of the last data points is a large spike.
+
+And then this large spike plus 20 is actually beyond the boundary of this signal.
+
+That could happen.
+
+So to prevent any errors from occurring, what I'm doing is using this flexible boundary algorithm where
+
+I say the lower bound is going to be this time point minus k or one, whichever is the larger of these
+
+two.
+
+So the idea is that if the first time point happened to be, let's say ten, then ten -20 is minus ten,
+
+and you can have an index of minus ten.
+
+So therefore this would get selected as the first and same thing here for the upper boundary.
+
+So if this is one of the last data points and that data point, that spike location plus k is longer
+
+than the entire time series, then it would take the last data point of the time series.
+
+All right.
+
+So now I'm going to run this code.
+
+That implements the figure.
+
+And now I will plot both the original signal and the filtered version.
+
+And to me, this looks really great.
+
+We can zoom in because what you see is the filtered signal in orange and the original signal in blue,
+
+and the original signal is not changed except for these large spike points.
+
+And this is really what the median filter is optimal for.
+
+Now I can show you what it would look like if I would median filter every single time point, not just
+
+these supra threshold time points.
+
+To do that, I'm going to say supra thresh equals one through n.
+
+So basically I'm going to say all of the time points are things that should be replaced with the median
+
+of the surrounding time points.
+
+So run that whole code again.
+
+And now you can see that the result is different.
+
+And we've lost a lot of these dynamics now.
+
+Maybe this is okay.
+
+It depends on what's happening in the signal.
+
+But usually when you're applying the median filter, you want to preserve the original signal as much
+
+as possible and replace only the extreme points like this.
+
+So this looks ugly to me.
+
+I don't want to finish the video like this, so I'll rerun this again.
+
+Oh, now this is interesting.
+
+I didn't change the threshold, so you can see that this is really not the right threshold for this
+
+specific data set.
+
+So this threshold has to be picked pretty carefully.
+
+Of course you can come up with some fancier algorithms that will define thresholds.
+
+Maybe there should be a local threshold.
+
+So the threshold here might be different from here might be different from here.
+
+But I'm not going to get into that in this video.
 
 ```python
 # create signal

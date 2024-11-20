@@ -616,12 +616,12 @@ not over all points.
 
 In this case we will generate a signal that is the integral of random numbers
 (integrated white noise, Brownian noise). Some values (5%) will be replaced
-with random abnormal values.
+with abnormally large values.
 
 ```{python}
 # create signal
 n = 2000
-signal = np.cumsum(np.random.randn(n))
+signal_z = np.cumsum(np.random.randn(n))
 
 
 # proportion of time points to replace with noise
@@ -632,252 +632,60 @@ noisepnts = np.random.permutation(n)
 noisepnts = noisepnts[0:int(n*propnoise)]
 
 # generate signal and replace points with noise
-signal[noisepnts] = 50+np.random.rand(len(noisepnts))*100
+signal_z[noisepnts] = 50 + np.random.rand(len(noisepnts)) * 100
 
 
 # use hist to pick threshold
-plt.plot(signal);
+plt.plot(signal_z);
 #plt.hist(signal,100);
 ```
 
-noise.
-
-So here I just pick some proportion.
-
-So it's going to be 5% of all the data points randomly selected.
-
-And I'm going to replace those data points by some large number.
-
-And that's basically what happens here.
-
-So run all of this code here and then I will plot again the signal.
-
-So now you can see this is the original signal here.
-
-And there's all this spiking noise.
-
-Let me.
-
-I'll zoom in here a bit to give you a better idea of what this noise looks like.
-
-So here's some data that's going up and down.
-
-Whatever.
-
-And then we have one single data point of noise before it goes back down.
-
-It looks like it's carrot shaped.
-
-But I think you will see that this is really just single points of noise here.
-
-So the thing is that a mean smoothing or a Gaussian smoothing filter, like what you saw in previous
-
-videos of this section, is actually not going to be very useful here.
-
-And the reason is that the mean is still going to be drawn by these large data values.
-
-So the mean smoothing wood would run up all the way like this, which is not what you want.
-
-What you want for a time series like this, assuming that these are just random noise spikes, is to
-
-keep all of these, to preserve all of these data points here, and just eliminate this one data point
-
-with some combination of points around it.
-
-And this is really what the median filter is designed to do.
-
-So we want to do is loop over here and come up with the median, but not of all the data points, only
-
-of the data points that are particularly large.
-
-So to decide which values are particularly large, you need to come up with some kind of threshold.
-
-And then we say that any values that are above that threshold get replaced by the median of some number
-
-of numbers around them.
-
-So there are various ways that you can pick a threshold.
-
-One way might be based on some knowledge, some existing knowledge about the system or about the signal.
-
-And maybe you know that a value greater than 70 means that it's definitely going to be noise, and that
-
-should be removed.
-
-In this case, I don't really know.
-
-So my approach here is going to be to use a histogram.
-
-So I'm going to make a histogram of all the data values.
-
-And now I'm going to assume based on looking at this histogram that these are all real values here.
-
-And these are all of the outliers here.
-
-So I'm going to set this threshold let's say here.
-
-So that value is 58.
-
-So I'll set it to 57.
-
-That's going to cut off right here.
-
-So this was 40 before because, yeah, each time you generate random numbers, you'll come up with a
-
-different appropriate threshold.
-
-So 57 works good for this random number sequence.
-
-And maybe you will find a more appropriate threshold when you generate these data.
-
-Okay so 57.
-
-And now what I'm going to do is find all of the data points in the signal that are greater than that
-
-threshold.
-
-So that works out to be 81 data points.
-
-So here I initialize the filtered signal to be the original signal.
-
-And now I set k to be 20.
-
-You'll see in a second where how k comes into it.
-
-So now I'm looping over time points.
-
-But this is not all the time points in the signal.
-
-This is only the time points where the data are above the threshold.
-
-Okay.
-
-And then here is where all the action happens.
-
-I replace this value in the filtered signal with the median of the original signal from.
-
-Basically this is minus k to plus k relative to the current time point.
-
-Now I have these boundaries here.
-
-And that's because let me go back and plot this signal.
-
-Now, in this case, it just happens to be by chance that there are no strong spikes in the signal really
-
-early or really late.
-
-But it could happen that the one of the last data points is a large spike.
-
-And then this large spike plus 20 is actually beyond the boundary of this signal.
-
-That could happen.
-
-So to prevent any errors from occurring, what I'm doing is using this flexible boundary algorithm where
-
-I say the lower bound is going to be this time point minus k or one, whichever is the larger of these
-
-two.
-
-So the idea is that if the first time point happened to be, let's say ten, then ten -20 is minus ten,
-
-and you can have an index of minus ten.
-
-So therefore this would get selected as the first and same thing here for the upper boundary.
-
-So if this is one of the last data points and that data point, that spike location plus k is longer
-
-than the entire time series, then it would take the last data point of the time series.
-
-All right.
-
-So now I'm going to run this code.
-
-That implements the figure.
-
-And now I will plot both the original signal and the filtered version.
-
-And to me, this looks really great.
-
-We can zoom in because what you see is the filtered signal in orange and the original signal in blue,
-
-and the original signal is not changed except for these large spike points.
-
-And this is really what the median filter is optimal for.
-
-Now I can show you what it would look like if I would median filter every single time point, not just
-
-these supra threshold time points.
-
-To do that, I'm going to say supra thresh equals one through n.
-
-So basically I'm going to say all of the time points are things that should be replaced with the median
-
-of the surrounding time points.
-
-So run that whole code again.
-
-And now you can see that the result is different.
-
-And we've lost a lot of these dynamics now.
-
-Maybe this is okay.
-
-It depends on what's happening in the signal.
-
-But usually when you're applying the median filter, you want to preserve the original signal as much
-
-as possible and replace only the extreme points like this.
-
-So this looks ugly to me.
-
-I don't want to finish the video like this, so I'll rerun this again.
-
-Oh, now this is interesting.
-
-I didn't change the threshold, so you can see that this is really not the right threshold for this
-
-specific data set.
-
-So this threshold has to be picked pretty carefully.
-
-Of course you can come up with some fancier algorithms that will define thresholds.
-
-Maybe there should be a local threshold.
-
-So the threshold here might be different from here might be different from here.
-
-But I'm not going to get into that in this video.
-
-```python
-# create signal
-n = 2000
-signal = np.cumsum(np.random.randn(n))
-
-
-# proportion of time points to replace with noise
-propnoise = .05
-
-# find noise points
-noisepnts = np.random.permutation(n)
-noisepnts = noisepnts[0:int(n*propnoise)]
-
-# generate signal and replace points with noise
-signal[noisepnts] = 50+np.random.rand(len(noisepnts))*100
-
-
+Ultimately, there are "single" contaminate data points. Applying a mean or a
+gaussian filter would not be very useful, as these would be swayed by the large 
+values. In cases like this, we just want to remove the spikes whilst
+retaining the rest of the points, something we can do with the median filter.
+
+Before applying the filter itself, we need to identify the spikes. For example,
+values above a threshold based on preexisting knowledge. One way to set that
+threshold would be to calculate the histogram as a way to identify outliers.
+For example, we could set the threshold at 57. 
+
+```{python}
 # use hist to pick threshold
-plt.hist(signal,100)
-plt.show()
+plt.hist(signal_z,100);
+```
 
+Now we identify the data points exceedding the aforementioned threshold.
+Then, we initialize the filtered signal to be the original signal.
+Then we loop along the data points where the threshold has been exceeded, and
+substitute the abnormal value by the median of the neighboring points within a
+radius $k$, i.e., from $t-k$ to $t+k$. Note spikes could occur near the
+start/end of the signal.
+
+To avoid this issue is advisable to use flexible boundary algorithm: the lower
+bound is going to be this time point minus k or one [zero for python],
+whichever is larger, and the last point must be the last data point or smaller.
+
+If we plot the signal we can see the signal is not changed except for these
+large spike points. And this is really what the median filter is optimal for.
+
+If the median filter is applied along the time series itself (not just a
+selection), we see a lot of dynamics have been lost, which may not be 
+acceptable.
+
+Also note the threshold needs to be picked quite carefully, or perhaps it
+should be should be a local threshold.... but that's a topic for a different
+video.
+
+```{python}
 # visual-picked threshold
 threshold = 40
 
-
 # find data values above the threshold
-suprathresh = np.where( signal>threshold )[0]
+suprathresh = np.where( signal_z > threshold )[0]
 
 # initialize filtered signal
-filtsig = copy.deepcopy(noisy_signal)
+filtsig = copy.deepcopy(signal_z)
 
 # loop through suprathreshold points and set to median of k
 k = 20 # actual window is k*2+1
@@ -888,11 +696,10 @@ for ti in range(len(suprathresh)):
     uppbnd = np.min((suprathresh[ti]+k+1,n))
     
     # compute median of surrounding points
-    filtsig[suprathresh[ti]] = np.median(signal[lowbnd:uppbnd])
+    filtsig[suprathresh[ti]] = np.median(signal_z[lowbnd:uppbnd])
 
 # plot
-plt.plot(range(0,n),signal, range(0,n),filtsig)
-plt.show()
+plt.plot(range(0,n),signal_z, range(0,n),filtsig);
 
 ```
 

@@ -708,12 +708,27 @@ plt.plot(range(0,n),signal_z, range(0,n),filtsig);
 # VIDEO: Remove linear trend
 ---
 
+Sometimes there is a trend, a slow drift in time series data. This may be a
+real tendency, or a an artifact of the system. Nonetheless, if we are not
+interested in said trend, we can just apply linear detrending.
 
+Linear detrending fits a single straight line through the entire dataset, and
+then subtract the line values from each of the original points, retaining
+just the local fluctuations.
 
-```python
+The signal is created as the cumulative sum of some random noise (brownian
+noise) plus a linear trend ranging from $-30$ to $+30$. The latter is removed
+using the detrend function, and then both the detrended and the original signal
+are plotted. Please note after detrending te mean of the signal becomes
+$\approx 0$ (basically zero plus computer rounding error).
+
+If we compare both the original and the detrended signals we see local
+fluctuations have been retained, whereas the trend has been removed.
+
+```{python}
 # create signal with linear trend imposed
 n = 2000
-trended_signal = np.cumsum(np.random.randn(n)) + np.linspace(-30,30,n)
+trended_signal = np.cumsum(np.random.randn(n)) + np.linspace(-30, 30, n)
 
 # linear detrending
 detsignal = scipy.signal.detrend(trended_signal)
@@ -723,11 +738,9 @@ omean = np.mean(trended_signal) # original mean
 dmean = np.mean(detsignal) # detrended mean
 
 # plot signal and detrended signal
-plt.plot(range(0,n),signal,label='Original, mean=%d' %omean)
-plt.plot(range(0,n),detsignal,label='Detrended, mean=%d' %dmean)
-
-plt.legend()
-plt.show()
+plt.plot(trended_signal,label=f"Original, mean={omean:.2f}")
+plt.plot(detsignal,label=f"Detrended, mean={dmean:.2f}")
+plt.legend();
 ```
 
 
@@ -735,25 +748,390 @@ plt.show()
 # VIDEO: Remove nonlinear trend with polynomials
 ---
 
+Not all trends that may appear in a dataset are linear. The solution in this
+case would be to use a polynomial, a function with form
+
+\begin{equation}
+    \beta_0 + \beta_1 x + \beta_2x^2 + \dots + \beta_n x^n
+\end{equation}
 
 
-```python
-## polynomial intuition
+It's a function of some variable $x$ (e.g., time) accompanied by several 
+coefficients $\left( \beta_0, \beta_1, \beta_2, \dots, \beta_n \right)$,
+each multiplying accompanying terms with increasingly higher powers $\left( x^{0}, x^{1},
+x^{2}, \dots, x^{n} \right)$
 
-order = 2
-x = np.linspace(-15,15,100)
+So these are just individual numbers, beta zero, beta one, beta two up to beta n.
 
-y = np.zeros(len(x))
+And the idea of a polynomial is that you have these single numbers, these coefficients that are all
 
-for i in range(order+1):
-    y = y + np.random.randn(1)*x**i
+multiplying exactly the same continuous variable X, except that each successive term brings X up to
 
-plt.plot(x,y)
-plt.title('Order-%d polynomial' %order)
-plt.show()
+a higher power.
 
-```
+So this is beta one times x to the one and beta two times x squared and so on up to beta n times x to
 
+the n.
+
+So this would be an nth order polynomial.
+
+Now it might look like this beta zero is just on its own out here, but in fact there is an implicit
+
+x here.
+
+This is x to the zero, which is just one.
+
+So X to the zero, x to the one.
+
+And so on.
+
+This first beta describes a general mean offset.
+
+All right.
+
+So I'll switch to Matlab now and I'll show you a little bit about polynomials to give you some more
+
+intuition, and then I'll walk you through some of the steps for fitting and removing a polynomial from
+
+a Time series.
+
+I'd like to start by giving you some intuition about polynomials.
+
+So here I'm going to create a polynomial and then plot it.
+
+I set the variable X to go from -15 to plus 15 in 100 steps, and then I'm generating the new signal
+
+y to be itself.
+
+So it starts off as just zeros and then I'm adding it to itself.
+
+Plus, and this is each polynomial term, so this is some random number, what I call beta in the slides
+
+and then times X to the some power.
+
+So this is set to be I minus one and that's because I want the first order to be zero.
+
+So the first power should be zero and that's going to be the offset.
+
+So here we have a zeroth order polynomial, which is just a completely flat line that has some offset
+
+relative to zero.
+
+Here is a first order polynomial.
+
+So that means that the largest power of x is X to the one, and that produces also a a straight line.
+
+But now it's going to have some slope.
+
+So I can keep running this over and over again.
+
+The slope changes each time, of course, because I'm generating a new random coefficient.
+
+So here is a second order polynomial.
+
+You'll recognize this as x squared.
+
+Sometimes it'll point down as well.
+
+There you go.
+
+And then the last polynomial I'll show you is a third order polynomial.
+
+And this you might also recognize as the general form of a function that contains x cubed.
+
+All right.
+
+So what I do here is generate a signal that has a slow polynomial drift.
+
+And the way I'm going to do this is by creating a signal.
+
+Now, the signal itself is actually a bunch of random numbers.
+
+But what we want to do in this video is remove this slow drift which which I create using the inter
+
+won function.
+
+So here's what that function looks like.
+
+And again, our goal here is going to be to fit and remove this slow polynomial drift here.
+
+Okay, so let's start by trying to fit a third order polynomial.
+
+I'll use the function polyfit, which fits the time vector to the signal.
+
+And this is going to be a third order polynomial.
+
+The output of this function polyfit is a vector p of coefficients.
+
+So let's look at this.
+
+So these are the four coefficients.
+
+Now it looks like I wrote three here, but that's because there's also an offset.
+
+So there's the x to the zero term, the x to the one term, the x to the two term and the x to the three
+
+term.
+
+So the highest term is x cubed or I should say T cubed.
+
+But there's also the zeroth order term, and that is the offset, which is this number here.
+
+All right.
+
+So then I use the function polyval and I input the coefficients that I got from here and the time variable
+
+and what this returns is what I'm calling y hat.
+
+This is the predicted data.
+
+So if the data contained only a third order polynomial and nothing else, then y hat should be exactly
+
+the original time series.
+
+Otherwise y hat is going to be whatever part of this time series is best matched with a third order
+
+polynomial.
+
+Then I take the residual and hopefully the idea of this polynomial fitting for Denoising is that this
+
+residual will contain only this higher frequency information and not the low frequency drifts.
+
+Okay, so let's see how that looks.
+
+And it looks pretty awful.
+
+It's really terrible.
+
+So the red line shows the polynomial fit, which doesn't really look anything like this slow drift.
+
+And then the black line is the residual.
+
+That's what I would call the filtered signal.
+
+And this should be the clean signal.
+
+Okay, So what is the problem here?
+
+The problem here is not that polynomial fitting is awful.
+
+Polynomial fitting is great for what it's used for, but a third order polynomial does not capture this
+
+signal.
+
+Okay, so we can try a bunch of different ones.
+
+Maybe.
+
+Let's try a seventh order polynomial and I should regenerate this figure here.
+
+All right, so here we go with a seventh order polynomial.
+
+So, I don't know.
+
+Does this look better?
+
+It's probably not much better.
+
+So we could sit here for a while and just randomly poke around with different polynomial coefficients.
+
+But this is not really a scalable method.
+
+This is not a good technique to use.
+
+Instead, we need some algorithmic way to determine the optimal order.
+
+And that I'm going to do using Bayes information criteria.
+
+And first I'm going to switch back to the slides to explain a little bit about what the Bayes information
+
+criteria means.
+
+The Bayes information criteria is a way to evaluate the fit of a model to a data set.
+
+So you want to know how well does your model fit a particular data set?
+
+And one of the methods you can use is applying something called the Bayes information criterion.
+
+And then the idea is that you want to compare the Bayes information criterion across a range of models,
+
+several different models that have different numbers of parameters.
+
+Ultimately that will generate a function that looks like this, a plot that looks like this.
+
+And then the idea is you pick the parameter or the polynomial order that gives you the smallest Bayes
+
+information criterion.
+
+And you want this to be small?
+
+Well, let me explain the formula and then I will explain why this should be the smallest value.
+
+So this is the formula for the Bayes information criterion.
+
+This is a really important term.
+
+It's the natural log of epsilon.
+
+Where Epsilon is defined as the difference between the actual data and the predicted data.
+
+So this is y hat.
+
+And for a polynomial fit.
+
+Y hat is the polynomial that you evaluate and that I just showed you in the code.
+
+That was that red line that you saw in the plot.
+
+So the idea is that as these get closer and closer to each other, so when the model fits the data better,
+
+then this difference is smaller.
+
+You can imagine what would happen if the model fit the data perfectly.
+
+Then y hat minus y would be zero everywhere.
+
+So the better the model, the smaller this value is going to be.
+
+Now, we don't really care about whether the model predicted values are a little bit higher or a little
+
+bit lower than the observed signal.
+
+We just want this quantity to be small and that's why it gets squared.
+
+So then you don't need to worry about the sign.
+
+So you sum this quantity, this difference up over all the time.
+
+Points divide by n.
+
+This gives you the mean squared error and that is this variable here epsilon.
+
+Now, as this value gets smaller and smaller, this will get smaller and smaller and eventually this
+
+will start being negative if Epsilon is smaller than one.
+
+Now, this quantity can never be zero because of all these squared terms, which is good because the
+
+log of a negative number is not defined.
+
+Okay, so then there's these other terms, and that's basically just accounting for the total number
+
+of free parameters that you have in the model.
+
+So let's see.
+
+So N is the number of data points.
+
+K is the number of parameters.
+
+So as you add more and more parameters to the model, you're naturally going to fit the data better
+
+and better.
+
+But just having more parameters doesn't necessarily give you a better model.
+
+So that's the idea of adding this term here.
+
+If you want to use more parameters for the model, you have to add an offset to the Bayes information
+
+criterion to account for the fact that more parameters are just naturally going to fit the data better,
+
+even if it's not a better model.
+
+Okay, so when you evaluate this formula for a range of polynomial orders that will give you a range
+
+of beta.
+
+Or Bayes information criteria values.
+
+And then you make a plot like this.
+
+And then basically the way you interpret this plot is that whichever order is smallest gives you the
+
+smallest information criterion.
+
+This is the best polynomial order that you should apply to the data.
+
+All right.
+
+So now I will switch back to Matlab and I'll show you this business in practice.
+
+Okay, so now you see in this code here, I loop through a range of orders.
+
+So from 5 to 40.
+
+Here is the line where I compute the predicted data.
+
+So this is similar to the two lines of code I showed you earlier, but I have the polyfit function embedded
+
+directly into the Polyval function.
+
+This gives us the predicted data.
+
+And here I say the difference between the predicted data and the actual signal.
+
+And then this difference is squared.
+
+Sum up all of these differences divide by n.
+
+Here is where I compute the Bayes information criteria.
+
+You'll remember that the key terms were the log of this these squared errors here, plus the order offset.
+
+Okay, so let's make a plot of this.
+
+Now, when you run this, you'll see a lot of warning signs in Matlab, and that's okay.
+
+A lot of these polynomials are actually terrible fits to the data, and that's why Matlab is giving
+
+you a warning.
+
+So you can just ignore these.
+
+All right.
+
+So when you look at this plot, it kind of looks like all of these values are equally low.
+
+However, that's really just skewed by these really, really excessively large values here.
+
+So if we would zoom in to this scale here, you will see that now there is kind of a clear minimum.
+
+So there is a minimum value.
+
+It happens to be polynomial order 20 for this data set.
+
+Of course, these are all random numbers, so it's not necessarily always going to be 20.
+
+Now, one thing you will often see in practice when you do this kind of Bayes information criteria evaluation.
+
+Is there might not be one clear minimum point.
+
+Instead, you might see kind of a slow ish dip that goes down.
+
+So imagine this point, we're a bit lower.
+
+Then it might not be totally clear whether you should use a model order of 18, 19 or 20 or maybe 21.
+
+You might get several points that are equally low.
+
+When that happens, that indicates that all of these polynomials are generally fitting the signal roughly
+
+equally well.
+
+And that's actually a good sign because it means that as long as you're in that minimum area, you have
+
+the right polynomial order.
+
+It could also happen sometimes that there are two minimum.
+
+So imagine it went down here and then it went up a little bit.
+
+Then maybe it went down again and there was a roughly equal minimum at 26, for example.
+
+If you encounter a situation like this, then it's best to go with the smaller polynomial order.
+
+So if there was if there were two minima here around 20 and around 26, that happens very, very rarely.
 
 ```python
 ## generate signal with slow polynomial artifact

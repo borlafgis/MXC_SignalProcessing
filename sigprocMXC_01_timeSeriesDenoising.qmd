@@ -758,198 +758,100 @@ case would be to use a polynomial, a function with form
 
 It's a function of some variable $x$ (e.g., time) accompanied by several 
 coefficients $\left( \beta_0, \beta_1, \beta_2, \dots, \beta_n \right)$,
-each multiplying accompanying terms with increasingly higher powers $\left( x^{0}, x^{1},
-x^{2}, \dots, x^{n} \right)$
-
-So these are just individual numbers, beta zero, beta one, beta two up to beta n.
-
-And the idea of a polynomial is that you have these single numbers, these coefficients that are all
-
-multiplying exactly the same continuous variable X, except that each successive term brings X up to
-
-a higher power.
-
-So this is beta one times x to the one and beta two times x squared and so on up to beta n times x to
-
-the n.
-
-So this would be an nth order polynomial.
-
-Now it might look like this beta zero is just on its own out here, but in fact there is an implicit
-
-x here.
-
-This is x to the zero, which is just one.
-
-So X to the zero, x to the one.
-
-And so on.
-
-This first beta describes a general mean offset.
-
-All right.
-
-So I'll switch to Matlab now and I'll show you a little bit about polynomials to give you some more
-
-intuition, and then I'll walk you through some of the steps for fitting and removing a polynomial from
-
-a Time series.
-
-I'd like to start by giving you some intuition about polynomials.
-
-So here I'm going to create a polynomial and then plot it.
-
-I set the variable X to go from -15 to plus 15 in 100 steps, and then I'm generating the new signal
-
-y to be itself.
-
-So it starts off as just zeros and then I'm adding it to itself.
-
-Plus, and this is each polynomial term, so this is some random number, what I call beta in the slides
-
-and then times X to the some power.
-
-So this is set to be I minus one and that's because I want the first order to be zero.
-
-So the first power should be zero and that's going to be the offset.
-
-So here we have a zeroth order polynomial, which is just a completely flat line that has some offset
-
-relative to zero.
-
-Here is a first order polynomial.
-
-So that means that the largest power of x is X to the one, and that produces also a a straight line.
-
-But now it's going to have some slope.
-
-So I can keep running this over and over again.
-
-The slope changes each time, of course, because I'm generating a new random coefficient.
-
-So here is a second order polynomial.
-
-You'll recognize this as x squared.
-
-Sometimes it'll point down as well.
-
-There you go.
-
-And then the last polynomial I'll show you is a third order polynomial.
-
-And this you might also recognize as the general form of a function that contains x cubed.
-
-All right.
-
-So what I do here is generate a signal that has a slow polynomial drift.
-
-And the way I'm going to do this is by creating a signal.
-
-Now, the signal itself is actually a bunch of random numbers.
-
-But what we want to do in this video is remove this slow drift which which I create using the inter
-
-won function.
-
-So here's what that function looks like.
-
-And again, our goal here is going to be to fit and remove this slow polynomial drift here.
-
-Okay, so let's start by trying to fit a third order polynomial.
-
-I'll use the function polyfit, which fits the time vector to the signal.
-
-And this is going to be a third order polynomial.
-
-The output of this function polyfit is a vector p of coefficients.
-
-So let's look at this.
-
-So these are the four coefficients.
-
-Now it looks like I wrote three here, but that's because there's also an offset.
-
-So there's the x to the zero term, the x to the one term, the x to the two term and the x to the three
-
-term.
-
-So the highest term is x cubed or I should say T cubed.
-
-But there's also the zeroth order term, and that is the offset, which is this number here.
-
-All right.
-
-So then I use the function polyval and I input the coefficients that I got from here and the time variable
-
-and what this returns is what I'm calling y hat.
-
-This is the predicted data.
-
-So if the data contained only a third order polynomial and nothing else, then y hat should be exactly
-
-the original time series.
-
-Otherwise y hat is going to be whatever part of this time series is best matched with a third order
-
-polynomial.
-
-Then I take the residual and hopefully the idea of this polynomial fitting for Denoising is that this
-
-residual will contain only this higher frequency information and not the low frequency drifts.
-
-Okay, so let's see how that looks.
-
-And it looks pretty awful.
-
-It's really terrible.
-
-So the red line shows the polynomial fit, which doesn't really look anything like this slow drift.
-
-And then the black line is the residual.
-
-That's what I would call the filtered signal.
-
-And this should be the clean signal.
-
-Okay, So what is the problem here?
-
-The problem here is not that polynomial fitting is awful.
-
-Polynomial fitting is great for what it's used for, but a third order polynomial does not capture this
-
-signal.
-
-Okay, so we can try a bunch of different ones.
-
-Maybe.
-
-Let's try a seventh order polynomial and I should regenerate this figure here.
-
-All right, so here we go with a seventh order polynomial.
-
-So, I don't know.
-
-Does this look better?
-
-It's probably not much better.
-
-So we could sit here for a while and just randomly poke around with different polynomial coefficients.
-
-But this is not really a scalable method.
-
-This is not a good technique to use.
-
-Instead, we need some algorithmic way to determine the optimal order.
-
-And that I'm going to do using Bayes information criteria.
-
-And first I'm going to switch back to the slides to explain a little bit about what the Bayes information
-
-criteria means.
-
-The Bayes information criteria is a way to evaluate the fit of a model to a data set.
-
-So you want to know how well does your model fit a particular data set?
+each multiplying accompanying terms with increasingly higher powers
+$\left( x^{0}, x^{1}, x^{2}, \dots, x^{n} \right)$ ($\beta_0$ is a general
+offset tat would be accompanied by $x^{0}$).
+
+## Polynomials intuition
+
+Now we will create a polynomial. $x$ ranges between $-15$ and $+15$ in 100
+steps. The signal $y$ is $x^{n}$ up to max_order multipled by a random number
+from the gaussian distribution.
+
+```{python}
+#| label: fig-polynomial-line
+#| fig-cap: "Thirt dorder polynomial"
+max_order = 3
+sample_count = 100
+x = np.linspace(-15, 15, sample_count)
+
+y = np.zeros(sample_count)
+for order in range(max_order + 1):
+    y += np.random.randn() * (x**order)
+
+plt.plot(y)
+
+```
+
+With order $0$ the polynomial is just a flat line with some offset, with
+order $1$ is a sloped line, with order $2$ is a parabola, and with order $3$
+it becomes as shown in @fig-polynomial-line.
+
+## Create a signal with a slow drift
+
+Now we will create a signal by interpolating between a bunch of random numbers:
+
+```{python}
+## generate signal with slow polynomial artifact
+
+n = 10000
+t = range(n)
+k = 10 # number of poles for random amplitudes
+
+slowdrift = np.interp(
+    np.linspace(1,k,n), # x-coord. where the interpolated values are evaluated
+    np.arange(0,k), # original x-coordinates
+    100 * np.random.randn(k) # original y-coordinates
+    )
+signal = slowdrift + 20 * np.random.randn(n)
+
+# plot
+plt.plot(t,signal)
+plt.xlabel('Time (a.u.)')
+plt.ylabel('Amplitude');
+```
+
+We will use polyfit to remove the the slow drift (third order). The function
+returns a vector/array with the same number of coefficients as the order plus
+one for the offset $\left( \beta_0, \beta_1, \beta_2, \beta_3 \right)$. Then,
+we get the predicted values from polyval, and obtain the residual.
+In a ideal case (the fit perfectly captures the data), the residual would be
+$0$. As you can see in @fig-naive-polyfit, the result is not very good, as the
+fit line (red) does not really capture the drift.
+
+```{python}
+#| label: fig-naive-polyfit
+#| fig-cap: "Fit a 3-order polynomial"
+
+# polynomial fit (returns coefficients)
+coefficients = np.polyfit(t, signal, 3)
+print(coefficients)
+
+# predicted data is evaluation of polynomial
+predicted = np.polyval(coefficients, t)
+
+# compute residual (the cleaned signal)
+residual = signal - predicted
+
+# now plot the fit (the function that will be removed)
+plt.plot(t,signal, 'b',label='Original')
+plt.plot(t,predicted, 'r',label='Polyfit')
+plt.plot(t,residual, 'k',label='Filtered signal')
+plt.legend();
+```
+
+Ultimately, the failure to capture the data stems from an inadequate polynomial
+order. Said optimum can be estimated using Bayes information criteria (BIC).
+What the BIC does is to asses how well the your model fits a particular data
+set.
+
+\begin{equation}
+    \epsilon = n^{-1} \sum^{n}_{i=1} \left(\hat{y}_i - y_{i} \right)^{2}
+\end{equation}
+
+\begin{equation}
+    b = n \ln (\epsilon) + k \ln (n)
+\end{equation}
 
 And one of the methods you can use is applying something called the Bayes information criterion.
 
@@ -1151,27 +1053,7 @@ plt.show()
 ```
 
 
-```python
-## fit a 3-order polynomial
 
-# polynomial fit (returns coefficients)
-p = np.polyfit(t,signal,3)
-
-# predicted data is evaluation of polynomial
-yHat = np.polyval(p,t)
-
-# compute residual (the cleaned signal)
-residual = signal - yHat
-
-
-# now plot the fit (the function that will be removed)
-plt.plot(t,signal,'b',label='Original')
-plt.plot(t,yHat,'r',label='Polyfit')
-plt.plot(t,residual,'k',label='Filtered signal')
-
-plt.legend()
-plt.show()
-```
 
 
 ```python

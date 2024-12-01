@@ -853,214 +853,30 @@ set.
     b = n \ln (\epsilon) + k \ln (n)
 \end{equation}
 
-And one of the methods you can use is applying something called the Bayes information criterion.
-
-And then the idea is that you want to compare the Bayes information criterion across a range of models,
-
-several different models that have different numbers of parameters.
-
-Ultimately that will generate a function that looks like this, a plot that looks like this.
-
-And then the idea is you pick the parameter or the polynomial order that gives you the smallest Bayes
-
-information criterion.
-
-And you want this to be small?
-
-Well, let me explain the formula and then I will explain why this should be the smallest value.
-
-So this is the formula for the Bayes information criterion.
-
-This is a really important term.
-
-It's the natural log of epsilon.
-
-Where Epsilon is defined as the difference between the actual data and the predicted data.
-
-So this is y hat.
-
-And for a polynomial fit.
-
-Y hat is the polynomial that you evaluate and that I just showed you in the code.
-
-That was that red line that you saw in the plot.
-
-So the idea is that as these get closer and closer to each other, so when the model fits the data better,
-
-then this difference is smaller.
-
-You can imagine what would happen if the model fit the data perfectly.
-
-Then y hat minus y would be zero everywhere.
-
-So the better the model, the smaller this value is going to be.
-
-Now, we don't really care about whether the model predicted values are a little bit higher or a little
-
-bit lower than the observed signal.
-
-We just want this quantity to be small and that's why it gets squared.
-
-So then you don't need to worry about the sign.
-
-So you sum this quantity, this difference up over all the time.
-
-Points divide by n.
-
-This gives you the mean squared error and that is this variable here epsilon.
-
-Now, as this value gets smaller and smaller, this will get smaller and smaller and eventually this
-
-will start being negative if Epsilon is smaller than one.
-
-Now, this quantity can never be zero because of all these squared terms, which is good because the
-
-log of a negative number is not defined.
-
-Okay, so then there's these other terms, and that's basically just accounting for the total number
-
-of free parameters that you have in the model.
-
-So let's see.
-
-So N is the number of data points.
-
-K is the number of parameters.
-
-So as you add more and more parameters to the model, you're naturally going to fit the data better
-
-and better.
-
-But just having more parameters doesn't necessarily give you a better model.
-
-So that's the idea of adding this term here.
-
-If you want to use more parameters for the model, you have to add an offset to the Bayes information
-
-criterion to account for the fact that more parameters are just naturally going to fit the data better,
-
-even if it's not a better model.
-
-Okay, so when you evaluate this formula for a range of polynomial orders that will give you a range
-
-of beta.
-
-Or Bayes information criteria values.
-
-And then you make a plot like this.
-
-And then basically the way you interpret this plot is that whichever order is smallest gives you the
-
-smallest information criterion.
-
-This is the best polynomial order that you should apply to the data.
-
-All right.
-
-So now I will switch back to Matlab and I'll show you this business in practice.
-
-Okay, so now you see in this code here, I loop through a range of orders.
-
-So from 5 to 40.
-
-Here is the line where I compute the predicted data.
-
-So this is similar to the two lines of code I showed you earlier, but I have the polyfit function embedded
-
-directly into the Polyval function.
-
-This gives us the predicted data.
-
-And here I say the difference between the predicted data and the actual signal.
-
-And then this difference is squared.
-
-Sum up all of these differences divide by n.
-
-Here is where I compute the Bayes information criteria.
-
-You'll remember that the key terms were the log of this these squared errors here, plus the order offset.
-
-Okay, so let's make a plot of this.
-
-Now, when you run this, you'll see a lot of warning signs in Matlab, and that's okay.
-
-A lot of these polynomials are actually terrible fits to the data, and that's why Matlab is giving
-
-you a warning.
-
-So you can just ignore these.
-
-All right.
-
-So when you look at this plot, it kind of looks like all of these values are equally low.
-
-However, that's really just skewed by these really, really excessively large values here.
-
-So if we would zoom in to this scale here, you will see that now there is kind of a clear minimum.
-
-So there is a minimum value.
-
-It happens to be polynomial order 20 for this data set.
-
-Of course, these are all random numbers, so it's not necessarily always going to be 20.
-
-Now, one thing you will often see in practice when you do this kind of Bayes information criteria evaluation.
-
-Is there might not be one clear minimum point.
-
-Instead, you might see kind of a slow ish dip that goes down.
-
-So imagine this point, we're a bit lower.
-
-Then it might not be totally clear whether you should use a model order of 18, 19 or 20 or maybe 21.
-
-You might get several points that are equally low.
-
-When that happens, that indicates that all of these polynomials are generally fitting the signal roughly
-
-equally well.
-
-And that's actually a good sign because it means that as long as you're in that minimum area, you have
-
-the right polynomial order.
-
-It could also happen sometimes that there are two minimum.
-
-So imagine it went down here and then it went up a little bit.
-
-Then maybe it went down again and there was a roughly equal minimum at 26, for example.
-
-If you encounter a situation like this, then it's best to go with the smaller polynomial order.
-
-So if there was if there were two minima here around 20 and around 26, that happens very, very rarely.
-
-```python
-## generate signal with slow polynomial artifact
-
-n = 10000
-t = range(n)
-k = 10 # number of poles for random amplitudes
-
-slowdrift = np.interp(np.linspace(1,k,n),np.arange(0,k),100*np.random.randn(k))
-signal = slowdrift + 20*np.random.randn(n)
-
-# plot
-plt.plot(t,signal)
-plt.xlabel('Time (a.u.)')
-plt.ylabel('Amplitude')
-plt.show()
-```
-
-
-
-
-
-```python
+$\epsilon$ is the mean squared error, which is calculated from the sample
+count, and the difference between the actual data ($y$) and the model
+prediction ($\hat{y}$), the value given by the polynomial (red line in
+@fig-naive-polyfit). $k$ is used to account for the number of free parameters in
+the model. Using more parameters may mean more flexibility to fit the data, but
+also means the model becomes more more complex. That's why $b$ includes this
+offset, to acount the tradeoff between accuracy and complexity. On coarse terms,
+the fit is better the samaller the number of aparameters and the smaller the
+difference between data and model (it can reach negative values if
+$\epsilon < 1$).
+
+The order with the smallest BIC gives you the model with the best accuracy /
+complexity when applied to the data. 
+
+In figure FIGURE we loop from orders ranging from orders 5 to 40, make a
+prediction, calculate MSE and calculate the BIC. Note python will spit a bunch
+of warnings indicating the fits are terrible. Note even tho
+
+
+```{python}
 ## Bayes information criterion to find optimal order
 
 # possible orders
-orders = range(5,40)
+orders = np.arange(5,40)
 
 # sum of squared errors (sse is reserved!)
 sse1 = np.zeros(len(orders))
@@ -1086,12 +902,17 @@ idx = np.argmin(bic)
 plt.plot(orders,bic,'ks-')
 plt.plot(orders[idx],bestP,'ro')
 plt.xlabel('Polynomial order')
-plt.ylabel('Bayes information criterion')
-plt.show()
+plt.ylabel('Bayes information criterion');
 ```
 
+```{python}
+is_large = (orders > 25)
+plt.plot(orders[is_large], bic[is_large], 'ks-')
+plt.xlabel('Polynomial order')
+plt.ylabel('Bayes information criterion');
+```
 
-```python
+```{python}
 ## now repeat filter for best (smallest) BIC
 
 # polynomial fit
@@ -1103,7 +924,6 @@ yHat = np.polyval(polycoefs,t)
 # filtered signal is residual
 filtsig = signal - yHat
 
-
 ## plotting
 plt.plot(t,signal,'b',label='Original')
 plt.plot(t,yHat,'r',label='Polynomial fit')
@@ -1111,18 +931,35 @@ plt.plot(t,filtsig,'k',label='Filtered')
 
 plt.xlabel('Time (a.u.)')
 plt.ylabel('Amplitude')
-plt.legend()
-plt.show()
+plt.legend();
 ```
 
+After certain point, it seems that all of subsequent values are equally low.
+However, this is skewed by the high values appearing for small orders.
+Note a clear minimum may not appear, indicating increasingly complex
+polynomials seem fit the data equally well. In cases like that is better to use
+the polynomial with the smallest order (Occam's razor).
 
----
-# VIDEO: Averaging multiple repetitions (time-synchronous averaging)
----
+# Averaging multiple repetitions (time-synchronous averaging)
 
+One very simple and yet very effective way to increase the signal to noise
+ratio of a signal is by averaging together multiple repetitions of some event
+in that signal (time synchronous averaging).
 
+Here thie signal is a 1d long time series, and we cut it into little epochs
+or snippets aligned to the onset of some event. By averaging all of these
+**windows** together, we can attenuate the noise while preserving the signal,
+obtaining a much cleaner version of the signal.
 
-```python
+## Event genration
+
+The event we will use is the derivative of a Gaussian. Then, we are going to
+insert 30 of these events into random positions within a data set. Note the
+insertion of the events also considers its length ($k$). Finally, we add noise
+about the same magnitude as the signal, and plot. You may notice the result
+may not really resemble the original event.
+
+```{python}
 ## simulate data
 
 # create event (derivative of Gaussian)
@@ -1150,12 +987,12 @@ plt.plot(data)
 # plot one event
 plt.subplot(212)
 plt.plot(range(k), data[onsettimes[3]:onsettimes[3]+k])
-plt.plot(range(k), event)
-plt.show()
+plt.plot(range(k), event);
 ```
 
 
-```python
+
+```{python}
 ## extract all events into a matrix
 
 datamatrix = np.zeros((Nevents,k))
@@ -1178,12 +1015,19 @@ plt.title('Average events')
 plt.show()
 ```
 
+If we do know the actual onsets of these events occurred, we can loop through
+all of the different events in the dataset and generate a data matrix where the
+rows represent the individual events whereas the columns represent time.
 
----
-# VIDEO: Remove artifact via least-squares template-matching
----
+In figure FIGURE the first panel represents the amplitude of the signal 
+converted into color, where each row represents one of the 30 events. The
+second represents the 'average' event. There  is some noise remaining, but
+overall it is cleaner than the the individual events. Note this procedure only
+will work if the onset of the events is known, making necessary some sort of
+template/pattern matching algorithm to identify the events.
 
 
+# Remove artifact via least-squares template-matching
 
 ```python
 # load dataset
@@ -1248,9 +1092,4 @@ plt.title('Residual')
 
 plt.tight_layout()
 plt.show()
-```
-
-
-```python
-
 ```

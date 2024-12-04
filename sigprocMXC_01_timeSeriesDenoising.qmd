@@ -1029,36 +1029,99 @@ template/pattern matching algorithm to identify the events.
 
 # Remove artifact via least-squares template-matching
 
-```python
+Imagine you have some signal changing over time (data channel), and a second
+ancillary measurement showing whether there might be an artifact. 
+Then, we can look for a matching pattern between both and use it to remove
+the artifact from the data channel. The procedure is called least squares
+fitting, and is pretty much the same as ordinary/general linear models.
+
+The algorithm is applied by creating a regression model based on least squares,
+which returns the parameter vector $\beta$ (regression weights), the closest
+match between artifact (predictor, column vector $X$), and the data channel
+(predicted, vector $y$, the time series as such).
+
+\begin{equation}
+    \beta = \left( X^T X \right)^{-1}X^{T}y
+\end{equation}
+
+Once the best match has been found, you scale the *design matrix* ($X$) with
+\beta ($X\beta$, predicted data), and subtract the result form the observed data.
+
+Note the predicted data is the component in the data vector that is best
+explained by the design matrix containing the artifact signal.
+
+\begin{equation}
+    r = y - X \beta
+\end{equation}
+
+the residual ($r$) is a vector of the same size as the original signal $y$, but
+with the algorithm removed based on the predicted data. Tis residual would be
+fed into the subsequent analyses with its artifacct subtracted out.
+
+If you have a single channel that provides the artifact, the design matrix will
+have two columns. The first would be just ones for the independant variable
+time, and $a_{1} \dots a_{n}$ would be the artifact channel
+
+\begin{bmatrix}
+    1 & a_{1} \\
+    1 & a_{2} \\
+    1 & a_{3} \\
+    \vdots & \vdots \\
+    1 & a_{n} \\
+\end{bmatrix}
+
+These equations boil down to calculating a regression model, predicting the
+data channel from the artifact channel, and use said model to remove the
+artifact from the data. All these details are just linear algebra.
+
+```{python}
 # load dataset
-matdat = sio.loadmat('templateProjection.mat')
+matdat = sio.loadmat('TimeSeriesDenoising/templateProjection.mat')
+print(matdat)
 EEGdat = matdat['EEGdat']
 eyedat = matdat['eyedat']
 timevec = matdat['timevec'][0]
 MN = np.shape(EEGdat) # matrix sizes
 
+plt.plot(EEGdat[:, 0], label='Brain');
+plt.plot(eyedat[:, 0], label='Eye');
+plt.legend()
+```
+
+matdat contains some 707 tests with 15000 data points each.
+encephalography data (EEG), electrical measurements of
+brain activity. The movement of the eyes can cause artifacts that are present
+in the EEG channels that are placed on the head. Thus, it is important to
+separate the artifact coming from the eyeball, and our data of interest coming
+from the brain.
+
+We want to map the artifact channel onto the data channel and remove whatever
+is common between these two channels. We initalize the residual data, and then
+we will loop over trials, the 707 repetitions
+
+```{python}
 # initialize residual data
 resdat = np.zeros(np.shape(EEGdat))
 
 
-# loop over trials
+# loop over trials (columns)
 for triali in range(MN[1]):
     
     # build the least-squares model as intercept and EOG from this trial
-    X = np.column_stack((np.ones(MN[0]),eyedat[:,triali]))
+    # column of ones and column of artifact time series
+    X = np.column_stack((np.ones(MN[0]),eyedat[:,triali])) # design matrix
     
     # compute regression coefficients for EEG channel
     b = np.linalg.solve(X.T@X,X.T@EEGdat[:,triali])
+    # Is adisable to avoid explicitly inverting a matrix.
+    # Matlab has a slash operator for this purpose
     
     # predicted data
     yHat = X@b
     
     # new data are the residuals after projecting out the best EKG fit
     resdat[:,triali] = EEGdat[:,triali] - yHat
-```
 
-
-```python
 ### plotting
 
 # trial averages
@@ -1071,25 +1134,33 @@ plt.legend()
 plt.show()
 ```
 
+The figure FIGURE shows the average across all the repetitions for the origial
+data (orange), the electro-optical ground (EOG, blue, the artifact), and the
+residual (green): the EEG without the impact of eye movement.
 
-```python
+```{python}
 # show all trials in a map
 clim = [-1,1]*20
 
-plt.subplot(131)
-plt.imshow(eyedat.T)
-plt.title('EOG')
+fig, axes = plt.subplots(ncols=3, sharex=True, sharey=True)
+pairs = {'EOG': eyedat, 'EEG': EEGdat, 'Residual': resdat}
+for ax_id, (title, data) in enumerate(pairs.items()):
+    axes[ax_id].set_title(title)
+    axes[ax_id].imshow(data.T)
 
-
-plt.subplot(132)
-plt.imshow(EEGdat.T)
-plt.title('EOG')
-
-
-plt.subplot(133)
-plt.imshow(resdat.T)
-plt.title('Residual')
-
-plt.tight_layout()
-plt.show()
+fig.tight_layout()
 ```
+
+The $y$ axis in figure FIGURE is thrials, and $x$ is the trial. The color
+depicts the amplitude of the signal, ranging from darker (low values) to
+brighter colors (high values)
+
+The first panel depcts the data from the eye, the second the EEG, and the
+third removed the former from the latter, enabling exploration of smaller
+features. Note the color scale is the same across plots, indicating even though
+amplitude has decreased, there are some remaining prominent features in the
+residual.
+
+# Exercise
+
+To be done

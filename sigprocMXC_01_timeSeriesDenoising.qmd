@@ -481,7 +481,7 @@ each other like this, you would get an electrical (EMG) signal as shown in
 @fig-emg. The EMG is used for many purposes, one of which is to determine when a
 movement was initiated._
 
-![EMG](emg.png){#fig-emg}
+![EMG](sigprocMXC_01_timeSeriesDenoising/emg.png){#fig-emg}
 
 _
 
@@ -512,7 +512,7 @@ Let's load the data in Python and take a look on its contents.
 #| label: fig-emgdata
 #| caption: "EMG"
 # import data
-emgdata = sio.loadmat('TimeSeriesDenoising/emg4TKEO.mat')
+emgdata = sio.loadmat('sigprocMXC_01_timeSeriesDenoising/emg4TKEO.mat')
 
 emg_time = emgdata['emgtime'][0]
 emg_measured = emgdata['emg'][0]
@@ -1076,7 +1076,7 @@ artifact from the data. All these details are just linear algebra.
 
 ```{python}
 # load dataset
-matdat = sio.loadmat('TimeSeriesDenoising/templateProjection.mat')
+matdat = sio.loadmat('sigprocMXC_01_timeSeriesDenoising/templateProjection.mat')
 print(matdat)
 EEGdat = matdat['EEGdat']
 eyedat = matdat['eyedat']
@@ -1165,7 +1165,7 @@ residual.
 
 ```{python}
 # Read the files, put them into easy to use variables
-data = sio.loadmat('TimeSeriesDenoising/denoising_codeChallenge.mat')
+data = sio.loadmat('sigprocMXC_01_timeSeriesDenoising/challenge.mat')
 data = {k: v for k, v in data.items() if not k.startswith('_')}
 original, target = data['origSignal'][0], data['cleanedSignal'][0]
 ```

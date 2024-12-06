@@ -1062,13 +1062,17 @@ If you have a single channel that provides the artifact, the design matrix will
 have two columns. The first would be just ones for the independant variable
 time, and $a_{1} \dots a_{n}$ would be the artifact channel
 
-\begin{bmatrix}
-    1 & a_{1} \\
-    1 & a_{2} \\
-    1 & a_{3} \\
-    \vdots & \vdots \\
-    1 & a_{n} \\
-\end{bmatrix}
+\begin{equation}
+    \beta
+    =
+    \begin{bmatrix}
+        1 & a_{1} \\
+        1 & a_{2} \\
+        1 & a_{3} \\
+        \vdots & \vdots \\
+        1 & a_{n} \\
+    \end{bmatrix}
+\end{equation}
 
 These equations boil down to calculating a regression model, predicting the
 data channel from the artifact channel, and use said model to remove the

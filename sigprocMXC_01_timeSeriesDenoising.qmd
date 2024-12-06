@@ -1163,4 +1163,61 @@ residual.
 
 # Exercise
 
-To be done
+```{python}
+# Read the files, put them into easy to use variables
+data = sio.loadmat('TimeSeriesDenoising/denoising_codeChallenge.mat')
+data = {k: v for k, v in data.items() if not k.startswith('_')}
+original, target = data['origSignal'][0], data['cleanedSignal'][0]
+```
+
+```{python}
+# Plot the data distribution
+plt.hist(original, bins='auto');
+
+# Calculate median-based statistics
+median = np.median(original)
+mad = np.median(np.abs(original - median))
+sd = (mad/0.67449)
+
+# Plot a prospective cutoff point
+cut = 3.5
+plt.axvline(median - cut * sd, color='k')
+plt.axvline(median + cut * sd, color='k');
+```
+
+```{python}
+# Replace outliers with the median of data within a radius
+
+# Identify
+outlier_idx = np.argwhere(np.abs(original - median) > cut * sd)
+
+# Substitute
+sel_radius = 3
+despiked = original.copy()
+for idx in outlier_idx.flatten():
+    start = (idx - sel_radius)
+    end = (idx + sel_radius + 1)
+    despiked[idx] = np.median(original[start:end])
+
+plt.plot(original, label='original')
+plt.plot(despiked, label='despiked')
+plt.legend();
+```
+
+```{python}
+# Prepare the kernels
+conv_radius = 75
+conv_diameter = 1 + 2 * conv_radius
+the_kernels = {
+    'mean': np.ones(conv_diameter),
+    'gauss': win.gaussian(conv_diameter, std=conv_diameter/3)
+}
+
+# Plot the results of the filtering
+plt.plot(despiked, label='despiked', lw=.25, alpha=.5)
+for label, kernel in the_kernels.items():
+    kernel /= np.sum(kernel) 
+    plt.plot(np.convolve(despiked, kernel, mode='same'), label=label)
+plt.legend();
+plt.ylim(-1.5, 1.5)
+```

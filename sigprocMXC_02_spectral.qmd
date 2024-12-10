@@ -94,7 +94,21 @@ import scipy.signal
 import copy
 ```
 
-```python
+In this video, we will go through some examples of the Fourier transform.
+Some examples are based on simulated data, which can be very useful, as the
+user can change the input signals (e.g., noise amount) with a known ground
+truth.
+
+We are going to simulate a signal with a sampling rate of 1234Hz with a length
+of two seconds. In other words, 1234 time points per second per the definition
+of the sampling rate in Hertz.
+
+The time vector goes from 0 to the number of points minus one divided by the
+sampling rate. Just linear indexing normalized by the sampling rate. Note this
+vector does not go up to exactly, exactly two seconds. This is caused
+by starting off at 0, if we started at one it would reach exactly two seconds.
+
+```{python}
 ## Generate a multispectral noisy signal
 
 # simulation parameters
@@ -104,7 +118,18 @@ time  = np.arange(0,npnts)/srate
 
 # frequencies to include
 frex  = [ 12,18,30 ]
+```
 
+If you go from zero up to the number of points, this is going to be two seconds
+plus one sampling rate. Now, that's not really wrong per se, but it's
+technically incorrect if you want to get two seconds of data.
+
+So I'm going to generate a multi-spectral signal with three frequencies: 12Hz,
+18Hz and 30Hz. First we initialize the signal to be just zeros plus noise.
+Then we loop over the frequencies adding sine waves to the noise 
+($\sin \left( 2 \pi f t \right)$). The indices are used as amplitudesS.
+
+```{python}
 signal = np.zeros(len(time))
 
 # loop over frequencies to create signal
@@ -113,7 +138,21 @@ for fi in range(0,len(frex)):
 
 # add some noise
 signal = signal + np.random.randn(len(signal))
+```
 
+Once the signal has been generated, we extract the coefficients using the fast
+Fourier transform (FFT). Then we use the absolute value (`abs`) to get the
+magnitude from the coefficients, which is the amplitude.
+
+If we intend to retrieve the original units of the signal, you do need to
+normalize this data by multiplying by 2 and then divide by the number of time
+points in the signal. However, if you are just interested in the shape of the
+spectrum, you don't need either of these two.
+
+The frequency vector is $1 + (n/2)$ (half of the time points) frequency bins
+ranging between $0$ and Nyquist (half of the sampling rate).
+
+```{python}
 # amplitude spectrum via Fourier transform
 signalX = scipy.fftpack.fft(signal)
 signalAmp = 2*np.abs(signalX)/npnts
@@ -121,15 +160,17 @@ signalAmp = 2*np.abs(signalX)/npnts
 # vector of frequencies in Hz
 hz = np.linspace(0,srate/2,int(np.floor(npnts/2)+1))
 
+# Undo the transformation
+remade = np.real(scipy.fftpack.ifft(signalX))
 ```
 
-
-```python
+```{python}
 ## plots
 
-plt.plot(time,signal,label='Original')
-plt.plot(time,np.real(scipy.fftpack.ifft(signalX)),'ro',label='IFFT reconstructed')
+plt.plot(time,signal, lw=1, label='Original')
+plt.scatter(time, remade, s=4,c='k', lw=1, zorder=999,label='IFFT reconstructed')
 
+plt.xlim(0.9, 1.1)
 plt.xlabel('Time (s)')
 plt.ylabel('Amplitude')
 plt.title('Time domain')
@@ -143,6 +184,281 @@ plt.ylabel('Amplitude')
 plt.title('Frequency domain')
 plt.show()
 ```
+
+Then we plot the time domain signal and the amplitude spectrum of the signal.
+You can clearly see that there are some rhythmicity components to this signal
+and also a little bit of noise added here. The amplitude spectrum shows the
+three peaks with the specified frequencies ($x$) and amplitudes ($y$) which
+stand out from a background of uniformly distributed random noise (in the 
+freq. domain; broadband noise?).
+
+If we take the inverse Fourier transform (IFT) and we plot it in the time
+domain we can see the original and the reconstructed signal overlap perfectly:
+we can go into the frequency domain through the Fourier transform and then
+apply the inverse Fourier transform and you get back the original signal
+flawlessly.
+
+Note if the signal is noisy enough, the components will not be clear on the
+frequency domain.
+
+If we increase the amplitude of the noise by multiplying by $3$ the signal 
+remains understandable on the frequency domain. If we multiply by $6$, $16$,
+$20$... the peaks stand less and less, with some becoming larger than the peaks
+we introduced in the synthetic signal.
+
+## Another use
+
+I want to show you another application of the Fourier transform.
+
+This is with real data that I downloaded from Trends Google.com.
+
+And basically I searched trends at Google.com for the search term signal processing.
+
+So the question is how often are people searching the internet using Google for signal processing?
+
+And that result gives you all of these numbers.
+
+So these are the numbers that I downloaded from this result.
+
+And these are normalized numbers and they go per week.
+
+So on this week there was 69, not 69 searches, but a normalized search volume of 69.
+
+And then the next week, more people were searching for signal processing.
+
+The next week more people and then about the same and so on.
+
+So it's one per week over a period of five years.
+
+So here I compute the search power.
+
+So this is the power of this searching rhythmicity.
+
+So I take the fast Fourier transform of the data and then I take the magnitude using the ABS function.
+
+And here I'm squaring it.
+
+So this is the amplitude spectrum.
+
+You can square the amplitude spectrum to get the power spectrum.
+
+So and then here I'm just plotting the search data and then the power spectrum of the search data.
+
+So here you see search volume for each week.
+
+So each dot corresponds to a week and this is around five years here.
+
+So there's a couple of interesting things that you see.
+
+First of all, it looks like it's going a little bit down gently over time.
+
+Perhaps signal processing is less and less interesting over time, or maybe more and more people are
+
+learning signal processing to such a large extent that they no longer need to search the internet for
+
+signal processing.
+
+Anyway, Whatever the reason, there is this general trend to go downwards over time.
+
+And it also maybe looks like there's some rhythmicity in here.
+
+But again, this is kind of hard to see because there's also these local fluctuations and maybe some
+
+of this is noise or weird unaccounted for variations.
+
+So now looking at the frequency domain plot, this looks a little strange at first, perhaps, and maybe
+
+a little disappointing.
+
+It kind of seems like nothing is happening at any frequency.
+
+So there's no rhythmicity anywhere in this search volume?
+
+Actually, that's not the case at all.
+
+What's really happening is that this plot is highly skewed by this one data point that is huge and this
+
+corresponds to zero frequency or the DC offset.
+
+So the DC or zero frequency component simply captures the mean, the average of the signal over the
+
+entire duration of the signal.
+
+So when you look here, you can see that the search volume, as I mentioned, this is normalized units.
+
+So the largest number gets scaled to 100.
+
+Now, it looks like the average is somewhere around 60.
+
+And now notice that we're squaring all the values here.
+
+So 60 squared is 3600.
+
+And that's about where this data point is.
+
+So this really just reflects the average search volume, the fact that the search volume over time is
+
+not zero.
+
+So that's not really very interesting.
+
+So it's often useful in signal processing to eliminate the DC component.
+
+You could do that in the plot just by cutting this value off in the plot, or you can do it by normalizing
+
+the data to get rid of the average value in the data.
+
+And so that's what I'm doing here with this line that's commented out.
+
+So here I'm going to show you two different ways of normalizing data.
+
+One, we can apply Detrending.
+
+So Detrend.
+
+And you already learned about Detrending in the previous section of this course.
+
+So that's going to remove this slow trend line and it's also going to remove the average.
+
+So now let's see what this looks like again.
+
+Okay.
+
+So looking at the frequency domain plot, this is already kind of interesting.
+
+I'm going to get back to the interpretation of these peaks in a few minutes.
+
+But I just wanted to point out that all of this information was present in the previous graph.
+
+It was just hard to see because this variation is relatively small.
+
+Look at these fluctuations relative to that overall mean offset of 3600.
+
+So now the search volume averages at zero over the entire time period and the DC component is zero.
+
+That is its zero power at zero frequency.
+
+However, I don't think this is a really good normalization in this case because there was this downward
+
+going trend and by detrending we've actually removed that trend and that trend is not noise.
+
+That's a valid part of the signal.
+
+That's something important to know about the signal.
+
+So I don't think that Detrending is the right normalization procedure in this case.
+
+Instead, I think a better approach is simply to remove the mean.
+
+So let me get back to this one.
+
+So now you see the trend going down again.
+
+So now what I'm going to do is.
+
+Means center the data, which means just subtracting the mean.
+
+So I say search data equals search data minus mean search data.
+
+Okay.
+
+And now I'm going to try this again.
+
+And now you see that the average is now zero.
+
+So the DC component is gone.
+
+But we still retain this slow drift going down, which is good.
+
+So we haven't really adjusted these long term trends in search volume.
+
+Okay.
+
+Now I want to interpret this plot a little bit.
+
+This power spectrum, as I mentioned, these data are all in weeks.
+
+These are search volumes per week.
+
+So I'm setting up the frequencies vector to go from zero all the way up to 52 in N units.
+
+So this looks a little bit different.
+
+So n corresponds to the length of the search data vector.
+
+So this form looks a little bit different from what I showed up here because here I said n divided by
+
+two plus one.
+
+This is actually just a plotting trick to go all the way up to N because now I don't need to cut off
+
+the Fourier coefficients half way through, which you can see I do here.
+
+So this means that we can interpret these numbers in terms of a fraction of a year.
+
+So this large peak at two means that every 26 weeks, so every one half of 52, which means twice a
+
+year, there is a peak in the search volume for signal processing.
+
+And that's this trend that you see here.
+
+So this is 52 weeks, so this would be a year.
+
+So it's like this and then like this.
+
+So this kind of trend here is what this two hertz sorry, two times per year spectral component is reflecting.
+
+So my guess is that this corresponds to the semester schedule where twice a year people are starting
+
+to learn about signal processing in their engineering course or perhaps a statistics or data analysis
+
+course, and they start searching the internet for signal processing information.
+
+And then there's also a peak at one hertz.
+
+And that is reflected by this larger trend here.
+
+And I guess there's two effects.
+
+So there's one per semester and then there's also an annual increase and decrease in search volume for
+
+signal processing.
+
+Now, this term here, this is the last thing I want to discuss in this video.
+
+If I just showed you this graph, this power spectrum, you would probably be tempted to interpret this
+
+as a very low frequency peak, as a low frequency fluctuation in the signal.
+
+However, in this case, that's really not what's going on.
+
+What's going on is that this slow linear trend, this decrease requires a lot of energy at a kind of
+
+one over F shape in the frequency spectrum.
+
+So that's basically these two coefficients here.
+
+But this first coefficient I've eliminated by mean centering the data.
+
+So I've artificially removed the DC component, which means that in the original data Time series,
+
+this component wasn't really zero.
+
+You saw it before, it was like around 3600.
+
+So this is not actually a real genuine peak in the spectrum.
+
+This actually reflects the steep drop off from zero hertz.
+
+That was capturing this linear decline in search volume.
+
+So I hope you feel like you've gained a little bit of intuition into the Fourier transform.
+
+I encourage you to spend some time with this code and you can change these parameters.
+
+You can change the amplitudes, you can change the amount of noise and try and get a richer intuition
+
+for the relationship between information in the time domain and information in the frequency domain.
 
 
 ```python

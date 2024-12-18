@@ -94,6 +94,7 @@ import pandas as pd
 from scipy.io import loadmat, wavfile
 from scipy import fftpack
 from scipy import signal as spysig
+from scipy.signal.windows import hann
 import copy
 ```
 
@@ -288,7 +289,7 @@ linear trend, which requires a lot of energy at a kind of 1/f shape in the
 frequency spectrum, and has spread over the two first coefficients, but it only
 has been fully removed from the first (DC component removal).
 
-# VIDEO: Welch's method
+# Welch's method
 
 The Welch's Method is a slight variation of the fast Fourier transform (FFT).
 Its purpose is to increase the signal-to-noise ratio (SNR), specially if the
@@ -481,60 +482,31 @@ resolution due the high count of FFT bins we specified (`nfft = 10 * srate`).
 The window has has a length of 2 seconds, but the FFT is 10s long, meaning
 there's a lot of zero padding, increasing the frequency resolution. If we set
 `nfft` to be just 1 second the line becomes more similar to the PREVIOUS FIGURE.
-Larger values of `nfft` increase the smoothing.
+Larger values of `nfft` increase the smoothing. Regardless of the window size,
+we still see the same fundamental features of the signal with a bump at ten
+hertz.
 
+# Spectrogram of birdsong
 
-So you can try adjusting the frequency resolution by changing the n of the F of T.
+Welch's method works by computing the FT of lots of successive windows of time,
+and then you average all the power spectra together. If we apply Welch's method
+over a signal whose properties change over time, the changed information would
+be lost during the averaging.
 
-So now I'm going to set this to be two seconds.
+Time Frequency analysis offers an alternative (related to wavelet analysis).
+[...] A spectrogram is...
 
-Actually, you know, I'll set this to be one second and this also to be one second.
+We are going to calculate the spectrogram of a birdsong. If we play the audio
+file we can hear a bird call accompanied by other bird sounds. Loading the file
+with `scipy.io.wavfile`, returns the frequency (`sf`) and a 2D array (`bc`),
+where the rows are the time steps are the 2 channels. In this case the time
+vector needs to be created from the frequency. Figure FIGURE depict both
+channels in the time domain.
 
-And now you can see that this looks more similar to the red line here.
-
-And I'll change this to be y axis in log scale.
-
-So set get current axis y scale and let's make this logarithmic scale.
-
-And now when you look at this red line, you can see it looks closer to this blue line.
-
-All right, So let's see.
-
-I'll set this back to two.
-
-And this was ten before.
-
-So now I can make this 100th.
-
-This is kind of ludicrously long.
-
-It's really a lot of smoothing.
-
-But the important point is that the smoothing basically makes the plot look a little bit nicer.
-
-But we still see the same fundamental features of the signal.
-
-So that is a bump in the spectrum at ten hertz.
-
-So there's strong rhythmicity in this signal at ten hertz or ten cycles per second.
-
-And then there's also this kind of gentle decrease in power as a function of increasing frequency,
-
-which is sometimes called one over F.
-
-
-
-
----
-# VIDEO: Spectrogram of birdsong
----
-
-
-
-```python
+```{python}
 ## load in birdcall (source: https://www.xeno-canto.org/403881)
 
-fs,bc = scipy.io.wavfile.read('XC403881.wav')
+fs,bc = wavfile.read('sigprocMXC_02_spectral/XC403881.wav')
 
 
 # create a time vector based on the data sampling rate
@@ -542,14 +514,31 @@ n = len(bc)
 timevec = np.arange(0,n)/fs
 
 # plot the data from the two channels
-plt.plot(timevec,bc)
-plt.xlabel('Time (sec.)')
-plt.title('Time domain')
-plt.show()
+fig, axes = plt.subplots(nrows=2, sharex=True)
+axes[0].set_title('Time domain')
+for channel in [0, 1]:
+    axes[channel].set_ylabel(f"Channel {channel + 1}")
+    axes[channel].plot(timevec, bc[:, channel], lw=.1)
+axes[1].set_xlabel('Time (sec.)')
+fig.tight_layout()
+```
 
+Figure FIGURE shows the power spectrum for channel 2.
+It shows a little bit of a low frequency offset and frequencies, and some stuff
+at higher frequencies. However, most of the energy of the signal is in the
+range beweeen 2.0 and 2.5 KiloHertz, the range of the bird call for this
+particular recording.
+
+The plot illustrates the limitation of applying a static Fourier transform
+covering the entire signal: apart from the bird call there is other stuff,
+like other birds. However, the three spikes of the power spectrum correspond
+to the bird that was singing, but they do not really reflect all the details
+contained in the audio.
+
+```{python}
 # compute the power spectrum
-hz = np.linspace(0,fs/2,int(floor(n/2)+1))
-bcpow = np.abs(scipy.fftpack.fft( scipy.signal.detrend(bc[:,0]) )/n)**2
+hz = np.linspace(0,fs/2,int(np.floor(n/2)+1))
+bcpow = np.abs(fftpack.fft( spysig.detrend(bc[:,0]) )/n)**2
 
 # now plot it
 plt.plot(hz,bcpow[0:len(hz)])
@@ -560,13 +549,88 @@ plt.show()
 ```
 
 
-```python
+
+So far we have plotted the signal in both the time and the frequency domains,
+each provide unique information. If we want to display frequency ($y$) changes
+over time ($x$) we can use the `spectrogram`, where the color depicts the 
+amplitude or the power of the signal (squared magnitude).
+
+```{python}
 ## time-frequency analysis via spectrogram
 
-frex,time,pwr = scipy.signal.spectrogram(bc[:,0],fs)
+frex,time,pwr = spysig.spectrogram(bc[:,0],fs)
 
-plt.pcolormesh(time,frex,pwr,vmin=0,vmax=9)
+plt.pcolormesh(time,frex,pwr,vmin=0,vmax=100)
 plt.xlabel('Time (s)'), plt.ylabel('Frequency (Hz)')
 plt.show()
 ```
 
+Most of the energy is in the range 2.0 - 2.5, with some energy between 5 and
+6 kHz (horizontal bar spanning most of the recording), which would be the high
+frequency components we saw on the frequency domain plot (FIGURE).
+There is also some **broadband** bursts (vertical lines).
+
+This example shows a real world example of how different sources can be
+embedded in different frequency ranges in the same recording.
+
+By using these tools we will be able to separate bird calls from one another
+using narrowband filtering.
+
+# Manual creation of a spectrogram
+
+```{python}
+chirp_mat = loadmat('sigprocMXC_02_spectral/spectral_codeChallenge.mat')
+chirp_time, chirp_signal = chirp_mat['signal'][0], chirp_mat['signal'][0]
+chirp_freq = chirp_mat['srate'].item()
+
+
+
+win_len = int(chirp_freq/2)
+win_count = int(len(chirp_signal)/win_len)
+win_ends = np.arange(win_len, len(chirp_signal), win_len)
+
+freq_max = chirp_freq/2 # Nyquist frequency
+freq_count = win_count + 1
+freq_bins = np.linspace(0, freq_max, freq_count)
+
+man_spec = np.zeros((len(freq_bins), len(win_ends)))
+
+
+taper = hann(win_len)
+for win_idx in range(len(win_ends)):
+    win_start = win_ends[win_idx] - win_len
+    win_end = win_ends[win_idx]
+    chunk = chirp_signal[win_start:win_end]
+    trans = np.abs(fftpack.fft(taper * chunk)/win_count)**2
+    print(trans.shape)
+print(man_spec.shape)
+```
+
+```python
+# note: different-length signal needs a different-length Hz vector
+hzW = np.linspace(0,srate/2,int(np.floor(winlength/2)+1))
+
+# Hann window
+hannw = .5 - np.cos(2*np.pi*np.linspace(0,1,int(winlength)))/2
+
+# initialize the power matrix (windows x frequencies)
+eegpowW = np.zeros(len(hzW))
+
+# loop over frequencies
+for wi in range(0,len(winonsets)):
+    
+    # get a chunk of data from this time window
+    datachunk = eegdata[ winonsets[wi]:winonsets[wi]+winlength ]
+    
+    # apply Hann taper to data
+    datachunk = datachunk * hannw
+    
+    # compute its power
+    tmppow = np.abs(fftpack.fft(datachunk)/winlength)**2
+    
+    # enter into matrix
+    eegpowW = eegpowW  + tmppow[0:len(hzW)]
+
+# divide by N
+eegpowW = eegpowW / len(winonsets)
+```

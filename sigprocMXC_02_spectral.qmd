@@ -288,17 +288,41 @@ linear trend, which requires a lot of energy at a kind of 1/f shape in the
 frequency spectrum, and has spread over the two first coefficients, but it only
 has been fully removed from the first (DC component removal).
 
----
 # VIDEO: Welch's method
----
 
+The Welch's Method is a slight variation of the fast Fourier transform (FFT).
+Its purpose is to increase the signal-to-noise ratio (SNR), specially if the
+signal changes over time (non-stationary).
 
+So far we have applied the Fourier Transform ("static" FT) over a single window
+covering the entire time series, which returns an amplitude/power spectrum.
+The idea of Welch's method is to cut up the Time series into a set of
+windows (also called blocks or epochs), and then apply a separate FT over each
+of them, each returning its unique spectrum, averaging them afterwards.
 
-```python
+If the features of the signal are the same over the entire window of time,
+the static and the "moving" FT (Welch's) method are just the same. However,
+if the signal or its noise change over time, then latter is going to give you
+a slightly cleaner result (higher SNR).
+
+The windows used in Welch's method may or may not ovrlap (e.g., 50% overlap
+between consecutive windows).
+
+We will illustrate this concept with some real data depicting electrical brain
+activity (EEG) in a resting state (the person was sitting quietly with their
+eyes closed and relaxing). The file contains the voltage fluctuations measured
+by one electrode, and the other contains the sampling rate (1024 Hz).
+
+We are going to create our own time vector with a vector ranging from 0 to
+the measurement count minus one, and then divid by the sampling rate. Plot
+PLOT depicts the data. It seems to contain 120 seconds of pure noise. However,
+In 1-sec periods it becomes possible to see some regular fluctuations.
+
+```{python}
 # load data and extract
-matdat  = loadmat('EEGrestingState.mat')
+matdat  = loadmat('sigprocMXC_02_spectral/EEGrestingState.mat')
 eegdata = matdat['eegdata'][0]
-srate   = matdat['srate'][0]
+srate   = matdat['srate'].item()
 
 # time vector
 N = len(eegdata)
@@ -307,24 +331,75 @@ timevec = np.arange(0,N)/srate
 # plot the data
 plt.plot(timevec,eegdata,'k')
 plt.xlabel('Time (seconds)')
-plt.ylabel('Voltage (\muV)')
+plt.ylabel('Voltage ($\mu V$)')
 plt.show()
+print(srate)
 ```
 
+In plot PLOT we compute the power over the entire EEG series
 
-```python
-## one big FFT (not Welch's method)
-
+```{python}
 # "static" FFT over entire period, for comparison with Welch
-eegpow = np.abs( scipy.fftpack.fft(eegdata)/N )**2
+eegpow = np.abs(fftpack.fft(eegdata)/N )**2
 hz = np.linspace(0,srate/2,int(np.floor(N/2)+1))
-
 ```
 
+## "Manual" Welch's method
 
-```python
-## "manual" Welch's method
+`winlength` defines how long the windows are going to be in terms of multiples
+of the sampling rate. In this case, the window length will be one second, 1024
+time points. `nOverlap` is the number of points shared by overlapping windows.
+In this example, it is $1/2$ of the sampling rate (half of a second). Thus,
+the windows have an overlap of 50% of the total window length. `winonsets`
+contains the bounds of each Fourier transform [redact this better].
 
+Note the frequency resolution of the Fourier transform is given by the number
+of time points. In the case of the static FT we have a lot of time points, but
+with Welch's method we only have those that are within the window.
+
+We need a different frequencies vector for the static power spectrum Vs. the
+smaller Fourier transform that's going to result from Welch's method. This
+vector `eegpowW` is initialized to 0's because we are going to keep adding
+power onto itself to compute the average over all of these window onsets.
+
+Then, we loop over the window onsets, take a chunk of the EEG data starting on
+the onset and ending on the onset plus the length of the window.
+
+If we just take the Fourier transform of the windows, there are going to be some
+edge artifacts: features introduced into the power spectrum that are not really
+representative of what we want to look for in the signal.
+
+And that's because the Fourier transform needs to capture the jump from 0 to
+the start of the signal, and going back to 0 after the end of the signal. 
+
+Thus, I want to taper this data snippet (apply a window). That is going to
+attenuate the the beginning and the end of the signal, minimize the edge effects.
+
+In this case, we apply the Hann window (plot PLOT). It starts at 0, goes up to
+one, and goes back to 0. When I apply this window to the data chunk we see is
+the same towards the middle, but the beginning and the end taper out. This is a
+way of minimizing the amount of edge effects that are contaminating the results
+of Welch's method.
+
+Note we are attenuating valid data at he start/end of the windows, and thats
+the main reason behind the overlapping windows: what is the edge in a specific
+window will be the at the center in the next.
+
+Once we apply the Han paper to the data, then I compute the power spectrum of
+the data chunk (`temppow`), and adding it to the variable to the EEG power
+(`eegpowW`). After looping over all 238 windows in the data, I divide by the
+total number of windows to calculate the the average.
+
+In figure FIGURE the black line corresponds to the static FFT computed based on 
+the entire signal, and the the red line corresponds to the Welch's method. Both
+plots seem to share the same broad features, but the spectrum for the static
+FFT is noisier the one obtained with Welch's method, which looks a lot smoother.
+Welch's method allows to focus on the key parts of the signal disregarding 
+small effects, which might be noise.
+
+
+
+```{python}
 # window length in seconds*srate
 winlength = int( 1*srate )
 
@@ -335,7 +410,7 @@ nOverlap = np.round(srate/2)
 winonsets = np.arange(0,int(N-winlength),int(winlength-nOverlap))
 
 # note: different-length signal needs a different-length Hz vector
-hzW = np.linspace(0,srate/2,int(floor(winlength/2)+1))
+hzW = np.linspace(0,srate/2,int(np.floor(winlength/2)+1))
 
 # Hann window
 hannw = .5 - np.cos(2*np.pi*np.linspace(0,1,int(winlength)))/2
@@ -353,7 +428,7 @@ for wi in range(0,len(winonsets)):
     datachunk = datachunk * hannw
     
     # compute its power
-    tmppow = np.abs(scipy.fftpack.fft(datachunk)/winlength)**2
+    tmppow = np.abs(fftpack.fft(datachunk)/winlength)**2
     
     # enter into matrix
     eegpowW = eegpowW  + tmppow[0:len(hzW)]
@@ -371,25 +446,83 @@ plt.legend()
 plt.show()
 ```
 
+## Scipy's Welch's method
 
-```python
+So far we have written our own code to showcase the inner workings of Welch's
+method. Scipy has its own implementation , which ingests the frequency (`fs`),
+the taper finction or `window`, the samples per window (`nperseg`), the number
+of shared samples between segments (`noverlap`), and the number of FFT points
+(`nfft`, the frequency resolution). The example of figure FIGURE has a 25%
+overlap
+
+```{python}
 ## Python's welch
 
 # create Hann window
 winsize = int( 2*srate ) # 2-second window
-hannw = .5 - np.cos(2*pi*linspace(0,1,winsize))/2
+hannw = .5 - np.cos(2*np.pi*np.linspace(0,1,winsize))/2
 
 # number of FFT points (frequency resolution)
 nfft = srate*100
 
-f, welchpow = scipy.signal.welch(eegdata,fs=srate,window=hannw,nperseg=winsize,noverlap=winsize/4,nfft=nfft)
+print(srate, nfft)
 
-plt.semilogy(f,welchpow)
+f, welchpow = spysig.welch(eegdata,fs=srate,window=hannw,nperseg=winsize,noverlap=winsize/4,nfft=nfft)
+
+plt.plot(f,welchpow) # plt.semilogy() to plot in log scale
 plt.xlim([0,40])
 plt.xlabel('frequency [Hz]')
 plt.ylabel('Power')
 plt.show()
 ```
+
+The figure FIGURE looks very smooth because it has a high frequency
+resolution due the high count of FFT bins we specified (`nfft = 10 * srate`).
+The window has has a length of 2 seconds, but the FFT is 10s long, meaning
+there's a lot of zero padding, increasing the frequency resolution. If we set
+`nfft` to be just 1 second the line becomes more similar to the PREVIOUS FIGURE.
+Larger values of `nfft` increase the smoothing.
+
+
+So you can try adjusting the frequency resolution by changing the n of the F of T.
+
+So now I'm going to set this to be two seconds.
+
+Actually, you know, I'll set this to be one second and this also to be one second.
+
+And now you can see that this looks more similar to the red line here.
+
+And I'll change this to be y axis in log scale.
+
+So set get current axis y scale and let's make this logarithmic scale.
+
+And now when you look at this red line, you can see it looks closer to this blue line.
+
+All right, So let's see.
+
+I'll set this back to two.
+
+And this was ten before.
+
+So now I can make this 100th.
+
+This is kind of ludicrously long.
+
+It's really a lot of smoothing.
+
+But the important point is that the smoothing basically makes the plot look a little bit nicer.
+
+But we still see the same fundamental features of the signal.
+
+So that is a bump in the spectrum at ten hertz.
+
+So there's strong rhythmicity in this signal at ten hertz or ten cycles per second.
+
+And then there's also this kind of gentle decrease in power as a function of increasing frequency,
+
+which is sometimes called one over F.
+
+
 
 
 ---
@@ -436,432 +569,4 @@ plt.pcolormesh(time,frex,pwr,vmin=0,vmax=9)
 plt.xlabel('Time (s)'), plt.ylabel('Frequency (Hz)')
 plt.show()
 ```
-
-In this video, I'm going to introduce you to a procedure called Welch's Method.
-
-This is a slight variation of the fast Fourier transform that you learned about in the previous video.
-
-And the goal of Welch's method is to do spectral analysis with the FFT, but to increase the signal
-
-to noise a little bit, particularly if there are non stationarities in the signal, meaning that the
-
-characteristics of the signal are changing a little bit over time.
-
-So the way to apply the Fourier transform for spectral analysis that you learned about in the previous
-
-video is something like this.
-
-So you take the entire time series and you compute one Fourier transform over the entire window of time
-
-and that's going to give you some amplitude spectrum or a power spectrum if you square these values.
-
-I often refer to this approach as the static FFT because you are treating this entire signal as if it's
-
-static, as if it doesn't really change over time.
-
-Now, the idea of Welch's method is to cut up the Time series into a set of blocks or epochs or windows,
-
-and then you would apply the Fourier transform separately on this window, separately on this window,
-
-separately on this window and so on.
-
-That's going to give you a number of power spectra.
-
-So however many windows you have, you have that many spectra, and then you average the amplitude spectra
-
-or the power spectra together after you've computed them separately for each window.
-
-Now, if the features of the signal are the same over the entire window of time, then these two methods
-
-are going to be basically the same.
-
-Welch's method and the static FFT method.
-
-But if there is noise that's changing over time or if the some of the characteristics of the signal
-
-are changing over time, then Welch's method is often going to give you a slightly cleaner result,
-
-slightly higher signal to noise.
-
-In this visualization, you see that these different windows are non-overlapping.
-
-So the second window begins where the first window ends and so on.
-
-That is one way of doing it.
-
-But it's also possible and actually more commonly done to have these windows be overlapping.
-
-So you might have, for example, 50% overlap between the successive windows.
-
-And that would mean, for example, that this second window would begin over here.
-
-So the first window would look like this, the second window would look like this, and then this one
-
-would be the third window and so on.
-
-Now I'll switch to Matlab so you can see how Welch's method gets implemented.
-
-To illustrate this concept, I'm going to use some real data.
-
-This is EEG data.
-
-So data of electrical brain activity, recordings in a human and the rest of this file name says resting
-
-state.
-
-And that means that while the EEG data were recorded, while the electrical brain activity was recorded,
-
-this individual was just sitting quietly with their eyes closed and relaxing.
-
-So let's load in this data file and whenever you load in a new data file into the Matlab workspace,
-
-it's useful to type who's to see what is contained inside this math file.
-
-So there's two variables EEG data, and you can see that that's just some really long vector.
-
-This is voltage fluctuations over time at one electrode, one measurement sensor.
-
-And then we have this variable s rate, which is the sampling rate.
-
-And these data were recorded at a sampling rate of 1024Hz.
-
-There is no time vector that's present in this mat file in this data set.
-
-So I'm going to need to create my own time vector and I'm going to do that the same way.
-
-I always create these time vectors, which is to go from zero to n minus one, where N is the number
-
-of time points in the signal, and then that's divided by the sampling rate.
-
-So here we make a plot of the EEG data.
-
-This is what it looks like.
-
-You can see there's 100 and 20s or it's two minutes of recordings.
-
-Now, you don't really see a whole lot.
-
-This actually looks more or less indistinguishable from noise.
-
-But you can zoom in and have a look and you'll see that there are some regular fluctuations at different
-
-time scales.
-
-So we want to do is make this a little more quantitative.
-
-We want to understand if there really are these fluctuations over time and if they have some particular
-
-characteristic frequency.
-
-So to start with, I'm going to compute the power over the entire EEG time series.
-
-So this is the static Fourier transform.
-
-All right.
-
-So I'll run this and this is going to be plotted a little bit further down.
-
-First, I want to show you Welch's method.
-
-So this is what I call in quotes manual Welch's method, because I'm writing out all the code.
-
-You'll see that that contrasts with the P Welch function that computes Welch's method automatically.
-
-And then I'll show you in the next cell.
-
-So here I define how long the windows are going to be in terms of multiples of the sampling rate.
-
-So this corresponds to seconds.
-
-So the window length will be one second, which is 1024 time points.
-
-And here I specify the number of points to overlap and that I just picked more or less randomly to be
-
-one half of the sampling rate, which corresponds to one half of a second.
-
-So these will overlap by 50% of the total window length.
-
-Here I define the onset time.
-
-So that's basically just defining where I start each Fourier transform.
-
-So we can zoom in here a bit.
-
-So let's see, I'll zoom in even more.
-
-So one Fourier transform window is going to go from 12 to 13 seconds.
-
-So like this.
-
-And then the next.
-
-So then right, so the starting point for this window would be 12 and then the next one, the next window
-
-is going to be starting at 12.5 and going to 13.5.
-
-So then the starting points have to go every 500 milliseconds, every half of a second.
-
-Okay.
-
-And then that's what is defined here on this line.
-
-Now, you'll remember in the first lecture that I gave in this section of the course.
-
-So that was the crash course on the Fourier transform.
-
-Or maybe you know this from my other course on the Fourier transform or a course that you've taken on
-
-the Fourier transform that the frequency resolution of the Fourier transform is given by the number
-
-of time points.
-
-So here in this static Fourier transform we have a lot of time points, so n time points.
-
-But here for this window, there's fewer time points.
-
-The number of time points in each Fourier transform will correspond to the window length.
-
-So basically all of that means is that we need a different frequencies vector for the static power spectrum
-
-versus the smaller Fourier transform that's going to result from Welch's method.
-
-I will get back to this line in a minute.
-
-Here I am, initializing the power to be zero and it's going to be zeros, basically, just because
-
-I'm going to keep adding power onto itself to compute the average over all of these window onsets.
-
-So here's a loop where I go over the window onsets.
-
-Here, I get a chunk of the EEG data so you can see it's the EEG data and I'm taking the window onsets.
-
-So for this iteration to the window onsets plus the length of the window.
-
-So this just gets one small chunk out of the entire really long time series.
-
-And let me set this here.
-
-So I do.
-
-Get one.
-
-So now what I'm doing here.
-
-So let me plot this data Chunk.
-
-Plot data.
-
-Chunk.
-
-Like this.
-
-So here's a little chunk of data.
-
-And you also see in this one second snippet of data that there are a couple of rhythms.
-
-So here's one.
-
-This looks like a slow rhythm.
-
-Maybe this corresponds to one hertz.
-
-And what you see really prominently is these smaller, up and down cycles.
-
-So we want to see whether this is really reliable, these rhythms and what their frequencies are.
-
-Now, if I just take the Fourier transform of this signal exactly how it is, there's going to be some
-
-edge artifacts, there's going to be some features introduced into the power spectrum that are not really
-
-representative of what we want to look for in the signal.
-
-And that's because the Fourier transform needs to capture this jump here up to zero.
-
-And in particular this edge here from this data point down to zero.
-
-So therefore what I want to do is taper this data snippet or apply a window.
-
-And that's going to attenuate the signal in the beginning and attenuate the signal at the end, and
-
-that will minimize the edge effects.
-
-And that I do by applying something called a hann window.
-
-So let me show you what this hann window looks like.
-
-So plot on W so you can see it starts and ends at zero and it goes up to one.
-
-So now when I apply this hann window to the data chunk.
-
-You can see that the data are the same towards the middle and then they taper out to the end and they
-
-taper out to the beginning.
-
-And this is a way of minimizing the amount of edge effects that are contaminating the results of Welch's
-
-method.
-
-On the other hand, this is still valid data.
-
-There's valid data here that we're attenuating and valid data here that we're attenuating.
-
-And so this is one of the primary motivations of having overlapping windows.
-
-That's why I specify this an overlap here.
-
-So the idea is that this part of the signal is valid.
-
-We don't want to completely throw it out.
-
-We just want to attenuate it in this window.
-
-Now imagine what happens in the next window, which starts halfway through this window.
-
-Now, this is going to be towards the middle.
-
-And a different part of the signal is going to be attenuated.
-
-Okay, so once we apply the Han paper to the data, then I compute the power spectrum of the data chunk,
-
-call it temp pow, and then I'm basically adding this temp pow variable to the EEG power.
-
-And then this is for Welch's method.
-
-And then after this loop where we go over all 238 windows in the data, I divide by the total number
-
-of windows, and that gives me the average.
-
-Okay.
-
-And then it's just some plotting.
-
-So let's see what this looks like.
-
-The black line here corresponds to the static FFT.
-
-So this was the Fourier transform from the entire data signal altogether, and the red line corresponds
-
-to the Welch's method.
-
-So you can see that the broad features of the signal is present in both the static FFT and in Welch's
-
-method.
-
-But the static FFT also has a lot more noise.
-
-There's a lot more of these really small fluctuations compared to Welch's method, which looks a lot
-
-smoother.
-
-And the advantage here of Welch's method is that it allows us to focus more on the key parts of the
-
-signal and be less distracted by these really small effects, which might just be noise.
-
-In fact, you can imagine if you would smooth out the black line.
-
-So if you take this power spectrum and apply some kind of smoothing or denoising strategy that you learned
-
-about in the previous section of this course, then you would probably get something that looks really,
-
-really similar to the red line.
-
-Okay, Now, this is a lot of code up here.
-
-And as I mentioned in the very, very beginning of this course, one of the first lectures in this course,
-
-you don't necessarily have to write out all the code for yourself each time.
-
-The point of me showing all this code and explaining all of this code is so that Welch's method doesn't
-
-seem like it's some really bizarre, complicated, mysterious procedure.
-
-It's actually pretty straightforward.
-
-So in practice it's easier just to use the Matlab function.
-
-P Welch.
-
-Where is that?
-
-That's here.
-
-So the function P Welch and you input the data, you input a taper that you want to apply.
-
-You input the number of points to overlap.
-
-So I specified above that it should be 50% overlap and here it's going to be 25% overlap because I'm
-
-dividing by four and then the end of the FFT.
-
-I'll talk about this in a minute and the data sampling rate.
-
-Okay.
-
-So now I will run this cell and this is Matlab's version of the Welch's method.
-
-So you can see it's not exactly like this red line here.
-
-But it does look really similar.
-
-In fact, you can look through the Matlab, P Welch code.
-
-It's essentially doing what I have here, but it does a few extra things and it puts it in log scale
-
-so it looks a little bit different.
-
-But fundamentally the function P Welch is implementing something that looks an awful lot like this loop
-
-here.
-
-Okay?
-
-So you can see that this plot looks nice and smooth.
-
-It has a pretty high frequency resolution and that's because I specified the N of the F of T to be 10,000
-
-points.
-
-So this is a 10,000 point FFT even though it's only two seconds of data.
-
-So the window is two seconds, but the FFT is 10s long, so there's a lot of zero padding, which means
-
-that the frequency resolution gets higher, which basically just means that this plot gets smoother.
-
-So you can try adjusting the frequency resolution by changing the n of the F of T.
-
-So now I'm going to set this to be two seconds.
-
-Actually, you know, I'll set this to be one second and this also to be one second.
-
-And now you can see that this looks more similar to the red line here.
-
-And I'll change this to be y axis in log scale.
-
-So set get current axis y scale and let's make this logarithmic scale.
-
-And now when you look at this red line, you can see it looks closer to this blue line.
-
-All right, So let's see.
-
-I'll set this back to two.
-
-And this was ten before.
-
-So now I can make this 100th.
-
-This is kind of ludicrously long.
-
-It's really a lot of smoothing.
-
-But the important point is that the smoothing basically makes the plot look a little bit nicer.
-
-But we still see the same fundamental features of the signal.
-
-So that is a bump in the spectrum at ten hertz.
-
-So there's strong rhythmicity in this signal at ten hertz or ten cycles per second.
-
-And then there's also this kind of gentle decrease in power as a function of increasing frequency,
-
-which is sometimes called one over F.
 

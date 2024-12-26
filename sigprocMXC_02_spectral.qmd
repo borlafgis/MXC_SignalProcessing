@@ -578,16 +578,16 @@ using narrowband filtering.
 
 # Manual creation of a spectrogram
 
-We are going to create a spectrogram using the contents of a `.mat` file,
-shich contains the sampling rate, the time vector, and a signal called 'chirp'.
-It is a type of sine wave starting with a smaller frequency that increases up
-to a point, and then decreases, remaining at a frequency larger than the
-starting one.
-
 With Welch's method, you would compute the power spectrum separately for each
 of these windows, and then you would average those results. Here, we are
 creating a time frequency plot (spectrogram), placing the power spectrum of
 each window into a matrix (500 ms windows, no overlap).
+
+We are going to create a spectrogram using the contents of a `.mat` file,
+shich contains the sampling rate, the time vector, and a signal called 'chirp'.
+It is a type of sine wave starting with a smaller frequency (~10 Hz) that
+increases up to a point (~25 Hz), and then decreases, remaining at a frequency
+larger than the starting one (~20 Hz).
 
 ```{python}
 # Load and simplify

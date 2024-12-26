@@ -578,59 +578,48 @@ using narrowband filtering.
 
 # Manual creation of a spectrogram
 
+We are going to create a spectrogram using the contents of a `.mat` file,
+shich contains the sampling rate, the time vector, and a signal called 'chirp'.
+It is a type of sine wave starting with a smaller frequency that increases up
+to a point, and then decreases, remaining at a frequency larger than the
+starting one.
+
+With Welch's method, you would compute the power spectrum separately for each
+of these windows, and then you would average those results. Here, we are
+creating a time frequency plot (spectrogram), placing the power spectrum of
+each window into a matrix (500 ms windows, no overlap).
+
 ```{python}
+# Load and simplify
 chirp_mat = loadmat('sigprocMXC_02_spectral/spectral_codeChallenge.mat')
-chirp_time, chirp_signal = chirp_mat['signal'][0], chirp_mat['signal'][0]
+chirp_time, chirp_signal = chirp_mat['time'][0], chirp_mat['signal'][0]
 chirp_freq = chirp_mat['srate'].item()
 
+# Make the time bins
+win_len = int(.5 * chirp_freq)
+win_edges = np.arange(0, len(chirp_signal) + 1, win_len)
+win_times = chirp_time[win_edges]
+win_count = len(win_edges) - 1
 
+# Make the frequency bins
+freq_edges = np.linspace(0, chirp_freq, win_len + 1) # FFT return is symmetric
 
-win_len = int(chirp_freq/2)
-win_count = int(len(chirp_signal)/win_len)
-win_ends = np.arange(win_len, len(chirp_signal), win_len)
-
-freq_max = chirp_freq/2 # Nyquist frequency
-freq_count = win_count + 1
-freq_bins = np.linspace(0, freq_max, freq_count)
-
-man_spec = np.zeros((len(freq_bins), len(win_ends)))
-
-
+# Prepare the spectrogram
+man_spec = np.zeros((win_len, win_count))
 taper = hann(win_len)
-for win_idx in range(len(win_ends)):
-    win_start = win_ends[win_idx] - win_len
-    win_end = win_ends[win_idx]
+for win_idx, win_end in enumerate(win_edges[1:]):
+    win_start = win_end - win_len
     chunk = chirp_signal[win_start:win_end]
-    trans = np.abs(fftpack.fft(taper * chunk)/win_count)**2
-    print(trans.shape)
-print(man_spec.shape)
-```
+    man_spec[:, win_idx] = np.abs(fftpack.fft(taper * chunk)/win_count)**2
 
-```python
-# note: different-length signal needs a different-length Hz vector
-hzW = np.linspace(0,srate/2,int(np.floor(winlength/2)+1))
-
-# Hann window
-hannw = .5 - np.cos(2*np.pi*np.linspace(0,1,int(winlength)))/2
-
-# initialize the power matrix (windows x frequencies)
-eegpowW = np.zeros(len(hzW))
-
-# loop over frequencies
-for wi in range(0,len(winonsets)):
-    
-    # get a chunk of data from this time window
-    datachunk = eegdata[ winonsets[wi]:winonsets[wi]+winlength ]
-    
-    # apply Hann taper to data
-    datachunk = datachunk * hannw
-    
-    # compute its power
-    tmppow = np.abs(fftpack.fft(datachunk)/winlength)**2
-    
-    # enter into matrix
-    eegpowW = eegpowW  + tmppow[0:len(hzW)]
-
-# divide by N
-eegpowW = eegpowW / len(winonsets)
+# plot
+fig, axes = plt.subplots(nrows=2, sharex=True)
+axes[0].set_title('Time-domain signal')
+axes[0].plot(chirp_time, chirp_signal, alpha=.75)
+axes[1].set_title('Spectrogram')
+axes[1].set_ylabel('Frequency (Hz)')
+axes[1].pcolormesh(win_times, freq_edges, man_spec, cmap='Greys')
+axes[1].set_ylim(top=40)
+axes[1].set_xlabel('Time (s)');
+fig.tight_layout()
 ```
